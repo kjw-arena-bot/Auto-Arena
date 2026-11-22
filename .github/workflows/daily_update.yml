@@ -2,13 +2,14 @@ name: Daily Arena 3v3 Data Update
 
 on:
   schedule:
-    - cron: "0 19 * * *"
+    - cron: "0 17 * * *"
+    - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
       max_new_matches:
         description: "Max new 3v3 matches to collect"
         required: false
-        default: "200"
+        default: "3000"
       aggregate_only:
         description: "Re-aggregate checkpoint only (true or false)"
         required: false
@@ -37,7 +38,7 @@ jobs:
         env:
           RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
           AGGREGATE_ONLY: ${{ github.event.inputs.aggregate_only || 'false' }}
-          MAX_NEW_MATCHES: ${{ github.event.inputs.max_new_matches || '200' }}
+          MAX_NEW_MATCHES: ${{ github.event.inputs.max_new_matches || '3000' }}
           ROUTING_REGION: "asia"
         run: python arena_3v3_collector.py
 
@@ -51,5 +52,6 @@ jobs:
             echo "No data changes to commit."
           else
             git commit -m "chore: daily arena 3v3 stats update ($(date -u +'%Y-%m-%d'))"
+            git pull --rebase origin main
             git push
           fi
