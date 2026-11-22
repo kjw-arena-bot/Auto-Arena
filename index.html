@@ -1,0 +1,1669 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoL 아레나 3v3 실측 데이터 분석기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            hextech: {
+              bg: "#070b14",
+              panel: "#0d1424",
+              card: "#111a2e",
+              border: "#1f2e4d",
+              gold: "#c89b3c",
+              goldLight: "#f0e6d2",
+              cyan: "#0ac8b9",
+              prism: "#c084fc"
+            }
+          },
+          fontFamily: {
+            sans: ['"Pretendard"', '"Noto Sans KR"', "system-ui", "-apple-system", "sans-serif"]
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      background-color: #070b14;
+      background-image:
+        radial-gradient(circle at 12% 10%, rgba(10, 200, 185, 0.07), transparent 36%),
+        radial-gradient(circle at 88% 8%, rgba(200, 155, 60, 0.09), transparent 38%);
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .hextech-card {
+      background: linear-gradient(180deg, rgba(17, 26, 46, 0.94) 0%, rgba(11, 18, 33, 0.96) 100%);
+      border: 1px solid rgba(200, 155, 60, 0.22);
+      box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.65);
+    }
+    .prismatic-border {
+      border: 1px solid rgba(192, 132, 252, 0.45);
+      box-shadow: 0 0 16px -8px rgba(192, 132, 252, 0.35);
+    }
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+    ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.45); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(200, 155, 60, 0.65); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // =========================================================================
+    // 1. Riot 공식 메타데이터 상수 (통계 없음 · 오직 명칭/등급/아이콘 동기화용)
+    // =========================================================================
+
+    const FALLBACK_DD_VERSION = "16.23.1";
+    const CDRAGON_ASSET_PREFIX = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/";
+    const CHERRY_AUGMENTS_KO_URL = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/ko_kr/v1/cherry-augments.json";
+    const CDRAGON_ARENA_KO_URL = "https://raw.communitydragon.org/latest/cdragon/arena/ko_kr.json";
+
+    const CHAMP_IMG = (key, ver = FALLBACK_DD_VERSION) => `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${key}.png`;
+    const DD_ITEM_IMG = (id, ver = FALLBACK_DD_VERSION) => `https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${id}.png`;
+
+    const ROLE_KO_MAP = {
+      Fighter: "전사",
+      Mage: "마법사",
+      Assassin: "암살자",
+      Marksman: "원거리 딜러",
+      Support: "서포터",
+      Tank: "탱커"
+    };
+
+    // 한국어 클라이언트 공식 증강 등급 검증 사전 (오직 등급 교정용, 통계 없음)
+    const OFFICIAL_AUGMENT_RARITY_KO = {
+      // 프리즘
+      "감바 모루": "프리즘", "거석상의 용기": "프리즘", "거인": "프리즘", "거인 학살자": "프리즘",
+      "공포를 부르는 자": "프리즘", "광대 대학": "프리즘", "돌진": "프리즘", "보석 건틀릿": "프리즘",
+      "신비한 주먹": "프리즘", "양손잡이": "프리즘", "유레카": "프리즘", "전장의 교향곡": "프리즘",
+      "정조준 일격 신동": "프리즘", "주문 각성": "프리즘", "지옥의 전도체": "프리즘", "최종 형태": "프리즘",
+      "탄환 세례": "프리즘", "탭 댄서": "프리즘", "파멸의 예언자": "프리즘", "거인의 결의": "프리즘",
+      "검무": "프리즘", "검을 뽑아라": "프리즘", "결투의 대가": "프리즘", "대지의 각성": "프리즘",
+      "마법 소녀": "프리즘", "마트료시카": "프리즘", "불길한 서약": "프리즘", "야생 불꽃": "프리즘",
+      "양자 연산": "프리즘", "우주의 중심": "프리즘", "유리 대포": "프리즘", "저주의 화염": "프리즘",
+      "전환: 혼돈": "프리즘", "정신 결속": "프리즘", "찜솥": "프리즘", "최상급 조준경 부착": "프리즘",
+      "케르베로스": "프리즘", "퀘스트: 우글렛의 마녀 모자": "프리즘", "프로틴 음료": "프리즘",
+      "궁극기 대변혁": "프리즘", "궁극의 룰렛": "프리즘", "궤도형 레이저": "프리즘", "끝판왕": "프리즘",
+      "난공불락": "프리즘", "마법 가속": "프리즘", "미친 과학자": "프리즘", "세월의 지혜": "프리즘",
+      "요정 마법": "프리즘", "이케시아의 몰락": "프리즘", "전능의 영혼": "프리즘", "정의로운 분노": "프리즘",
+      "죽음의 순환": "프리즘", "능력치 더하기 능력치 더하기 능력치!": "프리즘",
+      // 골드
+      "극악무도": "골드", "두 배 세 배": "골드", "마법 명사수": "골드", "마법 미사일": "골드",
+      "바늘에 실 끼우기": "골드", "벼락": "골드", "전술적 대비": "골드", "전환: 프리즘": "골드",
+      "처형 시간": "골드", "천상의 신체": "골드", "취약": "골드", "치명적 리듬": "골드",
+      "퀘스트: 강철 같은 심장": "골드", "탱크 엔진": "골드", "화염 낙인": "골드", "감쇠 광선": "골드",
+      "능력치 더하기 능력치!": "골드", "무법자의 투지": "골드", "불안정한 변형": "골드", "선동": "골드",
+      "시작부터 끝까지": "골드", "신성한 중재": "골드", "어둠의 축복": "골드", "영혼 흡수": "골드",
+      "인내심": "골드", "죽음의 손길": "골드", "최첨단 발명가": "골드", "치명적 치유": "골드",
+      "치명적인 공격": "골드", "퀘스트: 우르프의 챔피언": "골드", "너만을 위해": "골드",
+      "넘을 수 없는 벽": "골드", "노련한 저격수": "골드", "늘어나는 팔": "골드", "마도사의 주스 상자": "골드",
+      "머리를 노려라": "골드", "방어 기동": "골드", "범람": "골드", "빵과 버터": "골드",
+      "소나타": "골드", "소환사 혁명": "골드", "악마의 춤": "골드", "연계의 대가": "골드",
+      "점멸 난사": "골드", "축소 엔진": "골드", "퀘스트: 응징의 천사": "골드", "환영 무기": "골드",
+      "희생의 의지": "골드", "공생 돌연변이": "골드", "금방 돌아올게": "골드", "급속 성장": "골드",
+      "기생 관계": "골드", "끊임없는 회복": "골드", "되풀이": "골드", "밥과 닭고기": "골드",
+      "복수": "골드", "부메랑 투척": "골드", "빛의 인도자 결의": "골드", "빛의 파수꾼": "골드",
+      "빵과 잼": "골드", "신난다!": "골드", "소멸": "골드",
+      // 실버
+      "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
+      "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
+      "우당탕탕": "실버", "빨랫줄": "실버"
+    };
+
+    const AUGMENT_NAME_CORRECTIONS = {
+      "골리앗": "거인",
+      "용기의 거인": "거석상의 용기",
+      "거인의 용기": "거석상의 용기",
+      "취약점": "취약",
+      "인내": "인내심",
+      "응급 처치 키트": "응급처치 키트",
+      "처형자": "처형 시간",
+      "치명적 속도 + 정복자": "전장의 교향곡",
+      "모든 것을 바쳐": "너만을 위해"
+    };
+
+    const normalizeAugmentName = (rawName) => {
+      const n = String(rawName || "").trim();
+      return AUGMENT_NAME_CORRECTIONS[n] || n;
+    };
+
+    const normalizeCDragonAsset = (rawPath) => {
+      if (!rawPath) return "";
+      const trimmed = String(rawPath).trim();
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+      let cleaned = trimmed.toLowerCase();
+      if (cleaned.startsWith("/lol-game-data/assets/")) {
+        cleaned = cleaned.slice("/lol-game-data/assets/".length);
+      } else if (cleaned.startsWith("lol-game-data/assets/")) {
+        cleaned = cleaned.slice("lol-game-data/assets/".length);
+      }
+      return CDRAGON_ASSET_PREFIX + cleaned.replace(/^\/+/, "");
+    };
+
+    const calibrateNumericRarityMap = (rawAugs = []) => {
+      const votes = {};
+      const numSet = new Set();
+      rawAugs.forEach(a => {
+        if (typeof a?.rarity !== "number") return;
+        const code = a.rarity;
+        numSet.add(code);
+        const name = normalizeAugmentName(a.nameTRA || a.name || "");
+        const known = OFFICIAL_AUGMENT_RARITY_KO[name];
+        if (known) {
+          if (!votes[code]) votes[code] = { 실버: 0, 골드: 0, 프리즘: 0 };
+          votes[code][known] += 1;
+        }
+      });
+      const result = {};
+      Object.entries(votes).forEach(([code, counts]) => {
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (best && best[1] > 0) result[Number(code)] = best[0];
+      });
+      const sorted = Array.from(numSet).sort((a, b) => a - b);
+      if (Object.keys(result).length < 3 && sorted.length >= 3) {
+        if (numSet.has(4) && numSet.has(8)) {
+          if (!result[0]) result[0] = "실버";
+          if (!result[1]) result[1] = "실버";
+          if (!result[4]) result[4] = "골드";
+          if (!result[8]) result[8] = "프리즘";
+        } else {
+          if (!result[sorted[0]]) result[sorted[0]] = "실버";
+          if (!result[sorted[1]]) result[sorted[1]] = "골드";
+          if (!result[sorted[2]]) result[sorted[2]] = "프리즘";
+        }
+      }
+      return result;
+    };
+
+    const resolveOfficialRarity = (rawRarity, augName = "", numMap = {}) => {
+      const cleanName = normalizeAugmentName(augName);
+      if (OFFICIAL_AUGMENT_RARITY_KO[cleanName]) {
+        return OFFICIAL_AUGMENT_RARITY_KO[cleanName];
+      }
+      if (typeof rawRarity === "string") {
+        const lower = rawRarity.trim().toLowerCase();
+        if (lower.includes("prism") || lower.includes("프리즘")) return "프리즘";
+        if (lower.includes("gold") || lower.includes("골드")) return "골드";
+        if (lower.includes("silver") || lower.includes("실버")) return "실버";
+        const asNum = Number(lower);
+        if (Number.isFinite(asNum)) {
+          if (numMap[asNum]) return numMap[asNum];
+          if (asNum === 2 || asNum === 8) return "프리즘";
+          if (asNum === 1 || asNum === 4) return "골드";
+          return "실버";
+        }
+      }
+      if (typeof rawRarity === "number") {
+        if (numMap[rawRarity]) return numMap[rawRarity];
+        if (rawRarity === 2 || rawRarity === 8) return "프리즘";
+        if (rawRarity === 1 || rawRarity === 4) return "골드";
+        return "실버";
+      }
+      return "실버";
+    };
+
+    const CHOSUNG_LIST = [
+      "ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"
+    ];
+    const getKoreanChosung = (str) => {
+      let out = "";
+      for (const ch of String(str || "")) {
+        const code = ch.charCodeAt(0) - 0xac00;
+        if (code >= 0 && code <= 11171) {
+          out += CHOSUNG_LIST[Math.floor(code / 588)];
+        } else {
+          out += ch.toLowerCase();
+        }
+      }
+      return out;
+    };
+
+    const getTierNum = (tier, explicitNum = null) => {
+      if (explicitNum && explicitNum >= 1 && explicitNum <= 4) return explicitNum;
+      if (tier === "S") return 1;
+      if (tier === "A") return 2;
+      if (tier === "B") return 3;
+      if (tier === "C") return 4;
+      return 0;
+    };
+
+    const getTierBadgeMeta = (tierNum) => {
+      if (tierNum === 1) return { label: "1티어", cls: "bg-sky-500/20 text-sky-300 border-sky-400/50", solid: "bg-sky-500 text-slate-950 border-sky-300" };
+      if (tierNum === 2) return { label: "2티어", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-400/50", solid: "bg-emerald-500 text-slate-950 border-emerald-300" };
+      if (tierNum === 3) return { label: "3티어", cls: "bg-amber-500/20 text-amber-300 border-amber-400/45", solid: "bg-amber-500 text-slate-950 border-amber-300" };
+      if (tierNum === 4) return { label: "4티어", cls: "bg-rose-500/15 text-rose-300 border-rose-500/40", solid: "bg-rose-500 text-white border-rose-300" };
+      return { label: "-", cls: "bg-slate-800 text-slate-500 border-slate-700", solid: "bg-slate-700 text-slate-300 border-slate-600" };
+    };
+
+    const getRarityPillCls = (rarity) => {
+      if (rarity === "프리즘") return "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40";
+      if (rarity === "골드") return "bg-amber-500/20 text-amber-300 border-amber-400/40";
+      return "bg-slate-600/25 text-slate-300 border-slate-500/40";
+    };
+
+    const resolveLatestItemIcon = (item, ddVersion, ddItemNameMap = {}, cdItemIconMap = {}, preferCDragon = false) => {
+      const name = String(item?.name || "").trim();
+      if (preferCDragon && cdItemIconMap[name]) return cdItemIconMap[name];
+      const mappedId = item?.id || ddItemNameMap[name];
+      if (mappedId) return DD_ITEM_IMG(mappedId, ddVersion);
+      return cdItemIconMap[name] || item?.icon || item?.icon_url || "";
+    };
+
+    const computeAugmentComposite = (aug, champPicks, champAvg, champWin) => {
+      const picks = Number(aug.picks || 0);
+      const avg = Number(aug.avg ?? aug.avg_placement ?? champAvg ?? 3.5);
+      const win = Number(aug.win ?? aug.win_rate ?? champWin ?? 16.7);
+      const top3 = aug.top3_rate != null
+        ? Number(aug.top3_rate)
+        : Number(Math.min(95, Math.max(15, 50 + (3.5 - avg) * 26)).toFixed(1));
+      const pickRate = aug.pick_rate != null
+        ? Number(aug.pick_rate)
+        : Number(((picks / Math.max(champPicks || 1, 1)) * 100).toFixed(1));
+
+      if (aug.composite_score != null && Number.isFinite(Number(aug.composite_score))) {
+        return { ...aug, picks, avg, win, top3_rate: top3, pick_rate: pickRate, composite_score: Number(aug.composite_score) };
+      }
+
+      const m = 12;
+      const bayesPlace = (picks * avg + m * (champAvg || 3.5)) / (picks + m);
+      const bayesWin = (picks * win + m * (champWin || 16.7)) / (picks + m);
+      const winScore = Math.min(Math.max((bayesWin / 42) * 100, 0), 100);
+      const placeScore = Math.min(Math.max(((4.5 - bayesPlace) / 2.5) * 100, 0), 100);
+      const pickScore = Math.min(Math.max((Math.log1p(pickRate) / Math.log1p(24)) * 100, 0), 100);
+      const composite = Number((winScore * 0.35 + placeScore * 0.30 + pickScore * 0.35).toFixed(1));
+
+      return { ...aug, picks, avg: Number(avg.toFixed(2)), win: Number(win.toFixed(1)), top3_rate: top3, pick_rate: pickRate, composite_score: composite };
+    };
+
+    const computePatchFilteredSummary = (champ, selectedPatch, allPatchesDesc) => {
+      if (!champ?.hasRealData) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      const patchStats = champ.patch_stats || {};
+      const patchKeys = Object.keys(patchStats);
+
+      if (patchKeys.length === 0) {
+        const s = champ.summary || {};
+        const picks = Number(s.picks || 0);
+        const avg = Number(s.avg_placement ?? 3.5);
+        const bp = Number(s.bayes_placement ?? ((picks * avg + 25 * 3.5) / (picks + 25)));
+        const tier = picks < 20 ? "B" : bp <= 3.32 ? "S" : bp <= 3.46 ? "A" : bp <= 3.60 ? "B" : "C";
+        return {
+          tier,
+          tier_num: getTierNum(tier, s.tier_num ?? s.opgg_tier),
+          picks,
+          avg_placement: Number(avg.toFixed(2)),
+          bayes_placement: Number(bp.toFixed(2)),
+          top3_rate: Number((s.top3_rate ?? 50).toFixed(1)),
+          win_rate: Number((s.win_rate ?? 16.7).toFixed(1)),
+          avg_damage: Math.round(s.avg_damage || 0)
+        };
+      }
+
+      const weightCurve = [1.0, 0.75, 0.5, 0.35, 0.25];
+      const patchWeightMap = {};
+      allPatchesDesc.forEach((p, i) => {
+        patchWeightMap[p] = weightCurve[Math.min(i, weightCurve.length - 1)];
+      });
+
+      const targetKeys = selectedPatch === "ALL" ? patchKeys : (patchStats[selectedPatch] ? [selectedPatch] : []);
+      if (targetKeys.length === 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      let rawTotalPicks = 0;
+      let weightedPicksSum = 0;
+      let weightedPlaceSum = 0;
+      let weightedTop3Sum = 0;
+      let weightedWinSum = 0;
+      let weightedDmgSum = 0;
+
+      targetKeys.forEach(pKey => {
+        const st = patchStats[pKey];
+        const n = Number(st.picks || 0);
+        if (n <= 0) return;
+        const w = selectedPatch === "ALL" ? (patchWeightMap[pKey] ?? 0.5) : 1.0;
+        const effN = n * w;
+        rawTotalPicks += n;
+        weightedPicksSum += effN;
+        weightedPlaceSum += Number(st.avg_placement || 3.5) * effN;
+        weightedTop3Sum += Number(st.top3_rate || 50) * effN;
+        weightedWinSum += Number(st.win_rate || 16.7) * effN;
+        weightedDmgSum += Number(st.avg_damage || 0) * effN;
+      });
+
+      if (rawTotalPicks === 0 || weightedPicksSum <= 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      const avgPlacement = Number((weightedPlaceSum / weightedPicksSum).toFixed(2));
+      const bayesPlacement = Number(((weightedPicksSum * avgPlacement + 25 * 3.5) / (weightedPicksSum + 25)).toFixed(2));
+      const top3Rate = Number((weightedTop3Sum / weightedPicksSum).toFixed(1));
+      const winRate = Number((weightedWinSum / weightedPicksSum).toFixed(1));
+      const avgDamage = Math.round(weightedDmgSum / weightedPicksSum);
+      const tier = rawTotalPicks < 20 ? "B" : bayesPlacement <= 3.32 ? "S" : bayesPlacement <= 3.46 ? "A" : bayesPlacement <= 3.60 ? "B" : "C";
+
+      return {
+        tier,
+        tier_num: getTierNum(tier, champ.summary?.tier_num ?? champ.summary?.opgg_tier),
+        picks: rawTotalPicks,
+        avg_placement: avgPlacement,
+        bayes_placement: bayesPlacement,
+        top3_rate: top3Rate,
+        win_rate: winRate,
+        avg_damage: avgDamage
+      };
+    };
+
+    // =========================================================================
+    // 2. 공용 UI 컴포넌트
+    // =========================================================================
+
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, errorMsg: "" };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, errorMsg: error?.message || "렌더링 오류가 발생했습니다." };
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="min-h-screen flex items-center justify-center p-6">
+              <div className="hextech-card max-w-md w-full p-6 rounded-2xl text-center space-y-4">
+                <div className="text-3xl">⚠️</div>
+                <h2 className="text-lg font-bold text-white">화면 표시 중 오류가 발생했습니다</h2>
+                <p className="text-xs text-slate-400 break-all">{this.state.errorMsg}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 rounded-xl bg-hextech-gold text-hextech-bg font-bold text-sm"
+                >
+                  새로고침
+                </button>
+              </div>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    function SafeIcon({ src, fallbackSrc = "", alt = "", className = "w-10 h-10 rounded-lg", emojiFallback = "✨" }) {
+      const [currentSrc, setCurrentSrc] = useState(src || fallbackSrc || "");
+      const [triedFallback, setTriedFallback] = useState(false);
+      const [failed, setFailed] = useState(!(src || fallbackSrc));
+
+      useEffect(() => {
+        setCurrentSrc(src || fallbackSrc || "");
+        setTriedFallback(false);
+        setFailed(!(src || fallbackSrc));
+      }, [src, fallbackSrc]);
+
+      if (failed || !currentSrc) {
+        return (
+          <div
+            className={`${className} bg-slate-800/90 border border-slate-700 flex items-center justify-center text-slate-300 text-sm font-bold shrink-0 select-none`}
+            title={alt}
+          >
+            {emojiFallback}
+          </div>
+        );
+      }
+
+      return (
+        <img
+          src={currentSrc}
+          alt={alt}
+          loading="lazy"
+          className={`${className} object-cover shrink-0 bg-slate-900`}
+          onError={() => {
+            if (!triedFallback && fallbackSrc && fallbackSrc !== currentSrc) {
+              setTriedFallback(true);
+              setCurrentSrc(fallbackSrc);
+            } else {
+              setFailed(true);
+            }
+          }}
+        />
+      );
+    }
+
+    // =========================================================================
+    // 3. 메인 애플리케이션 (외부 통계 하드코딩 0%, 업로드된 JSON 실측 전용)
+    // =========================================================================
+
+    function ArenaGuideApp() {
+      const [rawChampionsData, setRawChampionsData] = useState({});
+      const [uploadedFileName, setUploadedFileName] = useState("");
+      const [autoLoadState, setAutoLoadState] = useState("loading"); // loading | loaded | none
+      const [lastSyncedAt, setLastSyncedAt] = useState("");
+      const [toastMsg, setToastMsg] = useState(null);
+
+      // Riot 공식 메타데이터 (명칭·등급·아이콘만 동기화)
+      const [ddVersion, setDdVersion] = useState(FALLBACK_DD_VERSION);
+      const [ddChampionsMap, setDdChampionsMap] = useState({});
+      const [ddItemNameMap, setDdItemNameMap] = useState({});
+      const [cdAugmentMetaMap, setCdAugmentMetaMap] = useState({});
+      const [cdItemIconMap, setCdItemIconMap] = useState({});
+      const [ddSyncState, setDdSyncState] = useState("loading");
+
+      // UI 상태
+      const [selectedChampKey, setSelectedChampKey] = useState("");
+      const [activeTab, setActiveTab] = useState("build");
+      const [searchQuery, setSearchQuery] = useState("");
+      const [roleFilter, setRoleFilter] = useState("전체");
+      const [tierFilter, setTierFilter] = useState("전체");
+      const [onlyRealData, setOnlyRealData] = useState(false);
+      const [selectedPatch, setSelectedPatch] = useState("ALL");
+      const [rarityFilter, setRarityFilter] = useState("전체");
+      const [augmentSort, setAugmentSort] = useState("composite");
+      const [isDragging, setIsDragging] = useState(false);
+
+      const fileInputRef = useRef(null);
+      const detailTopRef = useRef(null);
+
+      const hasUploadedData = Object.keys(rawChampionsData).length > 0;
+
+      const showToast = (type, text) => setToastMsg({ type, text });
+
+      useEffect(() => {
+        if (!toastMsg) return;
+        const timer = setTimeout(() => setToastMsg(null), 5000);
+        return () => clearTimeout(timer);
+      }, [toastMsg]);
+
+      // Riot Data Dragon + cherry-augments.json (1순위) + cdragon/arena (2순위) 동기화
+      useEffect(() => {
+        let cancelled = false;
+        const syncMetadata = async () => {
+          try {
+            const verRes = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
+            if (!verRes.ok) throw new Error("versions fetch failed");
+            const versions = await verRes.json();
+            const latestVer = versions?.[0] || FALLBACK_DD_VERSION;
+
+            const [champRes, itemRes, cherryRes, arenaRes] = await Promise.all([
+              fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/champion.json`),
+              fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/item.json`),
+              fetch(CHERRY_AUGMENTS_KO_URL).catch(() => null),
+              fetch(CDRAGON_ARENA_KO_URL).catch(() => null)
+            ]);
+
+            if (!champRes.ok || !itemRes.ok) throw new Error("ddragon fetch failed");
+            const [champJson, itemJson] = await Promise.all([champRes.json(), itemRes.json()]);
+
+            const augMetaMap = {};
+            const cdItemIcons = {};
+
+            if (cherryRes && cherryRes.ok) {
+              try {
+                const cherryList = await cherryRes.json();
+                if (Array.isArray(cherryList)) {
+                  const cherryNumMap = calibrateNumericRarityMap(cherryList);
+                  cherryList.forEach(aug => {
+                    const name = normalizeAugmentName(aug?.nameTRA || aug?.name || "");
+                    if (!name || name === "???") return;
+                    augMetaMap[name] = {
+                      id: Number(aug.id || 0),
+                      rarity: resolveOfficialRarity(aug.rarity, name, cherryNumMap),
+                      icon: normalizeCDragonAsset(aug.augmentSmallIconPath || aug.augmentLargeIconPath || "")
+                    };
+                  });
+                }
+              } catch (_) {}
+            }
+
+            if (arenaRes && arenaRes.ok) {
+              try {
+                const arenaJson = await arenaRes.json();
+                const rawAugs = arenaJson?.augments || [];
+                const numRarityMap = calibrateNumericRarityMap(rawAugs);
+
+                rawAugs.forEach(aug => {
+                  const name = normalizeAugmentName(aug?.name || "");
+                  if (!name || name === "???") return;
+                  const icon = normalizeCDragonAsset(aug.iconSmall || aug.iconLarge || "");
+                  if (augMetaMap[name]) {
+                    if (!augMetaMap[name].icon && icon) augMetaMap[name].icon = icon;
+                    return;
+                  }
+                  augMetaMap[name] = {
+                    id: Number(aug.id || 0),
+                    rarity: resolveOfficialRarity(aug.rarity, name, numRarityMap),
+                    icon
+                  };
+                });
+
+                (arenaJson?.items || []).forEach(it => {
+                  const iname = String(it?.name || "").trim();
+                  const iconUrl = normalizeCDragonAsset(it?.iconPath || "");
+                  if (iname && iconUrl) cdItemIcons[iname] = iconUrl;
+                });
+              } catch (_) {}
+            }
+
+            if (cancelled) return;
+
+            const getItemPriority = (idStr) => {
+              const id = Number(idStr);
+              if (id >= 1000 && id < 7000) return 3;
+              if ((id >= 220000 && id < 230000) || (id >= 440000 && id < 450000)) return 2;
+              return 1;
+            };
+
+            const itemNameMap = {};
+            const itemPriorityMap = {};
+            Object.entries(itemJson.data || {}).forEach(([idStr, info]) => {
+              const itemName = String(info?.name || "").trim();
+              if (!itemName) return;
+              const prio = getItemPriority(idStr);
+              if (!itemNameMap[itemName] || prio > (itemPriorityMap[itemName] || 0)) {
+                itemNameMap[itemName] = Number(idStr);
+                itemPriorityMap[itemName] = prio;
+              }
+            });
+
+            setDdVersion(latestVer);
+            setDdChampionsMap(champJson.data || {});
+            setDdItemNameMap(itemNameMap);
+            setCdAugmentMetaMap(augMetaMap);
+            setCdItemIconMap(cdItemIcons);
+            setDdSyncState("ready");
+          } catch (_) {
+            if (!cancelled) setDdSyncState("fallback");
+          }
+        };
+        syncMetadata();
+        return () => { cancelled = true; };
+      }, []);
+
+      // 같은 경로의 최신 arena_3v3_guide_all_champs.json 자동 로드 (GitHub Pages 연동용)
+      const fetchHostedGuideJson = async (isManualRefresh = false) => {
+        setAutoLoadState("loading");
+        try {
+          const res = await fetch(`./arena_3v3_guide_all_champs.json?t=${Date.now()}`, {
+            cache: "no-store"
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const parsed = await res.json();
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
+            throw new Error("empty json");
+          }
+
+          setRawChampionsData(parsed);
+          setUploadedFileName("arena_3v3_guide_all_champs.json (자동 동기화)");
+          setOnlyRealData(true);
+          setAutoLoadState("loaded");
+
+          const lastMod = res.headers.get("last-modified");
+          if (lastMod) {
+            const d = new Date(lastMod);
+            if (!Number.isNaN(d.getTime())) {
+              setLastSyncedAt(d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
+            }
+          }
+
+          const firstBestKey = Object.keys(parsed).sort((a, b) => {
+            const ap = parsed[a]?.summary?.bayes_placement ?? 9;
+            const bp = parsed[b]?.summary?.bayes_placement ?? 9;
+            return ap - bp;
+          })[0];
+          if (firstBestKey && !selectedChampKey) {
+            setSelectedChampKey(firstBestKey);
+          }
+
+          if (isManualRefresh) {
+            showToast("success", `최신 서버 JSON(${Object.keys(parsed).length}명)을 새로 불러왔습니다.`);
+          }
+        } catch (_) {
+          setAutoLoadState("none");
+          if (isManualRefresh) {
+            showToast("info", "자동 호스팅된 JSON을 찾을 수 없습니다. 로컬 JSON 파일을 직접 올려주세요.");
+          }
+        }
+      };
+
+      useEffect(() => {
+        fetchHostedGuideJson(false);
+      }, []);
+
+      const availablePatches = useMemo(() => {
+        const patchSet = new Set();
+        Object.values(rawChampionsData).forEach(champ => {
+          Object.keys(champ?.patch_stats || {}).forEach(p => patchSet.add(p));
+        });
+        return Array.from(patchSet).sort((a, b) => {
+          const [amaj, amin] = a.split(".").map(Number);
+          const [bmaj, bmin] = b.split(".").map(Number);
+          if (bmaj !== amaj) return bmaj - amaj;
+          return bmin - amin;
+        });
+      }, [rawChampionsData]);
+
+      const mergedAllRawChampions = useMemo(() => {
+        const combined = {};
+        const lowerToCanonicalKey = {};
+
+        Object.values(ddChampionsMap).forEach(ddChamp => {
+          const key = ddChamp.id;
+          lowerToCanonicalKey[key.toLowerCase()] = key;
+          combined[key] = {
+            champion_name: key,
+            kr_name: ddChamp.name,
+            roles: ddChamp.tags || ["Fighter"],
+            hasRealData: false,
+            best_augments: [],
+            best_prismatics: [],
+            core_items: [],
+            best_partners: []
+          };
+        });
+
+        const resolveCanonicalKey = (rawKey) => {
+          const k = String(rawKey || "").trim();
+          if (!k) return "";
+          return lowerToCanonicalKey[k.toLowerCase()] || k;
+        };
+
+        Object.entries(rawChampionsData || {}).forEach(([rawKey, champ]) => {
+          if (!champ || typeof champ !== "object") return;
+          const canonicalKey = resolveCanonicalKey(champ.champion_name || rawKey);
+          if (!canonicalKey) return;
+          const ddInfo = ddChampionsMap[canonicalKey];
+
+          const correctedAugments = (champ.best_augments || []).map(aug => {
+            const fixedName = normalizeAugmentName(aug.name);
+            const official = cdAugmentMetaMap[fixedName];
+            const verifiedRarity = resolveOfficialRarity(official?.rarity || aug.rarity, fixedName);
+            return {
+              ...aug,
+              name: fixedName,
+              rarity: verifiedRarity,
+              icon: official?.icon || aug.icon || aug.icon_url || "",
+              icon_url: official?.icon || aug.icon_url || aug.icon || ""
+            };
+          });
+
+          const correctedPartners = (champ.best_partners || []).map(pt => {
+            const pKey = resolveCanonicalKey(pt.partner || pt.champion);
+            const pDd = ddChampionsMap[pKey];
+            return {
+              ...pt,
+              partner: pKey,
+              champion: pKey,
+              name: pDd?.name || pt.name || pKey
+            };
+          });
+
+          const rawKrName = champ.kr_name;
+          const isFallbackEng = !rawKrName || rawKrName.toLowerCase() === canonicalKey.toLowerCase();
+
+          combined[canonicalKey] = {
+            ...(combined[canonicalKey] || {}),
+            ...champ,
+            champion_name: canonicalKey,
+            kr_name: (!isFallbackEng ? rawKrName : null) || ddInfo?.name || canonicalKey,
+            roles: (ddInfo?.tags && ddInfo.tags.length > 0) ? ddInfo.tags : (champ.roles || ["Fighter"]),
+            best_augments: correctedAugments,
+            best_partners: correctedPartners,
+            hasRealData: true
+          };
+        });
+
+        return combined;
+      }, [ddChampionsMap, rawChampionsData, cdAugmentMetaMap]);
+
+      const enrichedChampionsList = useMemo(() => {
+        return Object.values(mergedAllRawChampions).map(champ => ({
+          ...champ,
+          computedSummary: computePatchFilteredSummary(champ, selectedPatch, availablePatches),
+          chosung: getKoreanChosung(champ.kr_name)
+        })).sort((a, b) => {
+          if (a.hasRealData !== b.hasRealData) return a.hasRealData ? -1 : 1;
+          if (a.hasRealData && b.hasRealData) {
+            if (a.computedSummary.picks === 0 && b.computedSummary.picks > 0) return 1;
+            if (b.computedSummary.picks === 0 && a.computedSummary.picks > 0) return -1;
+            if (a.computedSummary.bayes_placement !== b.computedSummary.bayes_placement) {
+              return a.computedSummary.bayes_placement - b.computedSummary.bayes_placement;
+            }
+            return b.computedSummary.picks - a.computedSummary.picks;
+          }
+          return (a.kr_name || "").localeCompare(b.kr_name || "", "ko");
+        });
+      }, [mergedAllRawChampions, selectedPatch, availablePatches]);
+
+      const filteredChampions = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        return enrichedChampionsList.filter(c => {
+          if (onlyRealData && !c.hasRealData) return false;
+          if (roleFilter !== "전체") {
+            const koRoles = (c.roles || []).map(r => ROLE_KO_MAP[r] || r);
+            if (!koRoles.includes(roleFilter)) return false;
+          }
+          if (tierFilter !== "전체") {
+            if (c.computedSummary.tier_num !== Number(tierFilter)) return false;
+          }
+          if (q) {
+            const krMatch = (c.kr_name || "").toLowerCase().includes(q);
+            const enMatch = (c.champion_name || "").toLowerCase().includes(q);
+            const chosungMatch = (c.chosung || "").includes(q);
+            if (!krMatch && !enMatch && !chosungMatch) return false;
+          }
+          return true;
+        });
+      }, [enrichedChampionsList, onlyRealData, roleFilter, tierFilter, searchQuery]);
+
+      const activeChamp = useMemo(() => {
+        if (!selectedChampKey) return filteredChampions[0] || enrichedChampionsList[0] || null;
+        return enrichedChampionsList.find(c => c.champion_name === selectedChampKey) || filteredChampions[0] || null;
+      }, [enrichedChampionsList, filteredChampions, selectedChampKey]);
+
+      const processedAugments = useMemo(() => {
+        if (!activeChamp?.hasRealData) return [];
+        const baseList = activeChamp.best_augments || [];
+        const champPicks = activeChamp.computedSummary.picks || 100;
+        const champAvg = typeof activeChamp.computedSummary.avg_placement === "number" ? activeChamp.computedSummary.avg_placement : 3.5;
+        const champWin = typeof activeChamp.computedSummary.win_rate === "number" ? activeChamp.computedSummary.win_rate : 16.7;
+
+        const enriched = baseList.map(aug => {
+          const fixedName = normalizeAugmentName(aug.name);
+          const official = cdAugmentMetaMap[fixedName];
+          const withMeta = {
+            ...aug,
+            name: fixedName,
+            rarity: resolveOfficialRarity(official?.rarity || aug.rarity, fixedName),
+            icon: official?.icon || aug.icon || aug.icon_url || ""
+          };
+          return computeAugmentComposite(withMeta, champPicks, champAvg, champWin);
+        });
+
+        const filtered = rarityFilter === "전체" ? enriched : enriched.filter(a => a.rarity === rarityFilter);
+
+        return [...filtered].sort((a, b) => {
+          if (augmentSort === "top3") return (b.top3_rate - a.top3_rate) || (b.picks - a.picks);
+          if (augmentSort === "win") return (b.win - a.win) || (b.picks - a.picks);
+          if (augmentSort === "pick") return (b.pick_rate - a.pick_rate) || (b.picks - a.picks);
+          if (augmentSort === "avg") return (a.avg - b.avg) || (b.picks - a.picks);
+          return (b.composite_score - a.composite_score) || (b.picks - a.picks);
+        });
+      }, [activeChamp, rarityFilter, augmentSort, cdAugmentMetaMap]);
+
+      const augmentRarityCounts = useMemo(() => {
+        const counts = { 전체: 0, 프리즘: 0, 골드: 0, 실버: 0 };
+        if (!activeChamp?.hasRealData) return counts;
+        const list = activeChamp.best_augments || [];
+        counts.전체 = list.length;
+        list.forEach(a => {
+          const fixedName = normalizeAugmentName(a.name);
+          const r = resolveOfficialRarity(cdAugmentMetaMap[fixedName]?.rarity || a.rarity, fixedName);
+          if (counts[r] != null) counts[r] += 1;
+        });
+        return counts;
+      }, [activeChamp, cdAugmentMetaMap]);
+
+      const datasetOverview = useMemo(() => {
+        const realChamps = enrichedChampionsList.filter(c => c.hasRealData);
+        const totalPicks = realChamps.reduce((sum, c) => sum + (c.computedSummary.picks || 0), 0);
+        return {
+          realChampCount: realChamps.length,
+          totalPicks
+        };
+      }, [enrichedChampionsList]);
+
+      const handleFileLoad = (file) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(String(ev.target?.result || "{}"));
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              showToast("error", "올바른 집계 JSON 파일(arena_3v3_guide_all_champs.json)이 아닙니다.");
+              return;
+            }
+            const keys = Object.keys(parsed);
+            if (keys.length === 0) {
+              showToast("error", "JSON 파일에 챔피언 데이터가 비어 있습니다.");
+              return;
+            }
+
+            setRawChampionsData(parsed);
+            setUploadedFileName(file.name);
+            setSelectedPatch("ALL");
+            setTierFilter("전체");
+            setRoleFilter("전체");
+            setOnlyRealData(true);
+
+            const firstBestKey = keys.sort((a, b) => {
+              const ap = parsed[a]?.summary?.bayes_placement ?? 9;
+              const bp = parsed[b]?.summary?.bayes_placement ?? 9;
+              return ap - bp;
+            })[0];
+            if (firstBestKey) {
+              const lowerMap = {};
+              Object.keys(ddChampionsMap).forEach(k => { lowerMap[k.toLowerCase()] = k; });
+              setSelectedChampKey(lowerMap[firstBestKey.toLowerCase()] || firstBestKey);
+            }
+
+            showToast("success", `'${file.name}' 로드 완료! 실측 챔피언 ${keys.length}명의 데이터에 공식 한글 명칭·등급을 적용했습니다.`);
+          } catch (err) {
+            showToast("error", `JSON 파싱 오류: ${err.message}`);
+          }
+        };
+        reader.onerror = () => showToast("error", "파일을 읽는 중 오류가 발생했습니다.");
+        reader.readAsText(file, "utf-8");
+      };
+
+      const handleClearData = () => {
+        setRawChampionsData({});
+        setUploadedFileName("");
+        setSelectedPatch("ALL");
+        setOnlyRealData(false);
+        setSelectedChampKey("");
+        showToast("info", "업로드된 데이터를 초기화했습니다.");
+      };
+
+      const handleSelectChampion = (champKey) => {
+        setSelectedChampKey(champKey);
+        setRarityFilter("전체");
+        if (window.innerWidth < 1024 && detailTopRef.current) {
+          detailTopRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+
+      const hasRealData = Boolean(activeChamp?.hasRealData);
+      const summary = activeChamp?.computedSummary || {};
+
+      return (
+        <div
+          className="min-h-screen flex flex-col"
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragging(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            const file = e.dataTransfer?.files?.[0];
+            if (file) handleFileLoad(file);
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target?.files?.[0];
+              if (file) handleFileLoad(file);
+              e.target.value = "";
+            }}
+          />
+
+          {isDragging && (
+            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6 pointer-events-none">
+              <div className="hextech-card border-2 border-dashed border-hextech-cyan p-10 rounded-3xl text-center max-w-lg w-full">
+                <div className="text-5xl mb-4">📂</div>
+                <h2 className="text-2xl font-extrabold text-white mb-2">여기에 JSON 파일을 놓으세요</h2>
+                <p className="text-sm text-slate-300">
+                  직접 수집한 arena_3v3_guide_all_champs.json 파일을 드롭하면 즉시 분석이 시작됩니다.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {toastMsg && (
+            <div className="fixed top-4 right-4 z-50 max-w-md">
+              <div className={`px-4 py-3 rounded-xl border shadow-2xl flex items-start gap-3 text-sm backdrop-blur-md ${
+                toastMsg.type === "success"
+                  ? "bg-emerald-950/95 border-emerald-500/50 text-emerald-100"
+                  : toastMsg.type === "error"
+                    ? "bg-rose-950/95 border-rose-500/50 text-rose-100"
+                    : "bg-slate-900/95 border-hextech-gold/50 text-slate-100"
+              }`}>
+                <span className="text-base mt-0.5">
+                  {toastMsg.type === "success" ? "✅" : toastMsg.type === "error" ? "⚠️" : "ℹ️"}
+                </span>
+                <p className="flex-1 leading-relaxed">{toastMsg.text}</p>
+                <button onClick={() => setToastMsg(null)} className="text-slate-400 hover:text-white text-xs font-bold px-1">✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* 상단 헤더 */}
+          <header className="sticky top-0 z-30 bg-hextech-bg/90 backdrop-blur-md border-b border-hextech-gold/25">
+            <div className="max-w-[1480px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-hextech-gold via-amber-500 to-yellow-700 flex items-center justify-center shadow-lg text-hextech-bg font-black text-lg">
+                  3v3
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-white">
+                      LoL 아레나 3v3 실측 데이터 분석기
+                    </h1>
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-hextech-cyan/15 text-hextech-cyan border border-hextech-cyan/35">
+                      6팀 · 18인 모드
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5 flex-wrap">
+                    <span>
+                      {ddSyncState === "ready"
+                        ? `🟢 Riot 공식 명칭·등급 동기화 완료 (v${ddVersion})`
+                        : ddSyncState === "loading"
+                          ? "🟡 Riot 공식 명칭·등급 동기화 중..."
+                          : `🟠 오프라인 폴백 (v${ddVersion})`}
+                    </span>
+                    <span className="hidden sm:inline text-slate-600">|</span>
+                    <span className="text-hextech-goldLight font-medium">
+                      {hasUploadedData
+                        ? `${uploadedFileName} (${datasetOverview.realChampCount}명 · ${datasetOverview.totalPicks.toLocaleString()}판${lastSyncedAt ? ` · 갱신 ${lastSyncedAt}` : ""})`
+                        : autoLoadState === "loading"
+                          ? "최신 실측 JSON 확인 중..."
+                          : "업로드된 실측 JSON 없음"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {availablePatches.length > 0 && (
+                  <select
+                    value={selectedPatch}
+                    onChange={(e) => setSelectedPatch(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 hover:border-hextech-gold/60 rounded-xl px-3 py-2 text-xs font-bold text-slate-200 outline-none"
+                  >
+                    <option value="ALL">전체 패치 통합 ({availablePatches.join("·")})</option>
+                    {availablePatches.map(p => (
+                      <option key={p} value={p}>패치 {p} 단독</option>
+                    ))}
+                  </select>
+                )}
+
+                {autoLoadState === "loaded" && (
+                  <button
+                    onClick={() => fetchHostedGuideJson(true)}
+                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-hextech-cyan/40 text-xs font-bold text-hextech-cyan transition-colors"
+                    title="GitHub Pages에 반영된 최신 JSON 다시 불러오기"
+                  >
+                    🔄 최신 갱신
+                  </button>
+                )}
+
+                {hasUploadedData && (
+                  <button
+                    onClick={handleClearData}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors"
+                  >
+                    초기화
+                  </button>
+                )}
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-hextech-gold to-amber-500 text-hextech-bg font-extrabold text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-1.5"
+                >
+                  <span>📂</span>
+                  <span>실측 JSON 불러오기</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* JSON 미업로드 시: 깔끔한 드롭존 안내 화면 */}
+          {!hasUploadedData ? (
+            <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-14 flex items-center justify-center">
+              <div className="hextech-card p-8 sm:p-12 rounded-3xl text-center space-y-6 w-full">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-hextech-gold/15 border border-hextech-gold/40 flex items-center justify-center text-3xl">
+                  📊
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-white">수집한 아레나 3v3 JSON을 올려주세요</h2>
+                  <p className="text-sm text-slate-400 leading-relaxed max-w-xl mx-auto">
+                    외부 사이트의 임의 통계는 전혀 포함되어 있지 않습니다. <br />
+                    <code className="text-hextech-cyan bg-slate-900 px-1.5 py-0.5 rounded">arena_3v3_collector.py</code>로 생성한
+                    <code className="text-hextech-goldLight bg-slate-900 px-1.5 py-0.5 rounded ml-1">arena_3v3_guide_all_champs.json</code> 파일을
+                    불러오면 Riot 공식 한국어 증강 명칭·등급(실버/골드/프리즘)과 아이콘이 자동 적용됩니다.
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-700 hover:border-hextech-cyan bg-slate-950/60 hover:bg-slate-900/80 transition-all rounded-2xl p-8 cursor-pointer space-y-3"
+                >
+                  <div className="text-4xl">📂</div>
+                  <div className="text-base font-extrabold text-white">클릭하거나 JSON 파일을 여기로 드래그하세요</div>
+                  <div className="text-xs text-slate-500">지원 파일: arena_3v3_guide_all_champs.json</div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-2">
+                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                    <div className="text-xs font-bold text-hextech-cyan mb-1">1. 순수 실측 통계</div>
+                    <p className="text-[11px] text-slate-400">업로드한 JSON의 판수, 평균 순위, 1등 확률, Top 3 승률만 표시합니다.</p>
+                  </div>
+                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                    <div className="text-xs font-bold text-fuchsia-300 mb-1">2. 공식 명칭·등급 보정</div>
+                    <p className="text-[11px] text-slate-400">Riot 공식 cherry-augments.json으로 실버·골드·프리즘 등급을 자동 교정합니다.</p>
+                  </div>
+                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                    <div className="text-xs font-bold text-hextech-goldLight mb-1">3. 다중 패치 필터</div>
+                    <p className="text-[11px] text-slate-400">전체 패치 통합 가중치 및 개별 패치 단독 통계를 자유롭게 전환합니다.</p>
+                  </div>
+                </div>
+              </div>
+            </main>
+          ) : (
+            /* JSON 로드 완료 시: 2단 분석 대시보드 */
+            <main className="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              {/* 좌측 사이드바: 챔피언 목록 */}
+              <aside className="lg:col-span-4 xl:col-span-3 hextech-card p-4 rounded-2xl space-y-3.5 lg:sticky lg:top-24">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="챔피언 검색 (가렌, ㄱㄹ, Garen...)"
+                    className="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder-slate-500 outline-none"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                    <span className="font-semibold">실측 티어 필터</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={onlyRealData}
+                        onChange={(e) => setOnlyRealData(e.target.checked)}
+                        className="accent-hextech-cyan rounded"
+                      />
+                      <span>수집된 챔피언만 ({datasetOverview.realChampCount})</span>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+                    {["전체", "1", "2", "3", "4"].map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setTierFilter(t)}
+                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          tierFilter === t
+                            ? "bg-hextech-gold text-hextech-bg shadow"
+                            : "text-slate-300 hover:text-white hover:bg-slate-800"
+                        }`}
+                      >
+                        {t === "전체" ? "전체" : `${t}티어`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {["전체", "전사", "마법사", "암살자", "원거리 딜러", "서포터", "탱커"].map(r => (
+                    <button
+                      key={r}
+                      onClick={() => setRoleFilter(r)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                        roleFilter === r
+                          ? "bg-hextech-cyan/20 text-hextech-cyan border-hextech-cyan/50"
+                          : "bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-12 text-[11px] font-semibold text-slate-400 px-2 pt-2 border-t border-slate-800/80">
+                  <span className="col-span-1">#</span>
+                  <span className="col-span-5">챔피언</span>
+                  <span className="col-span-2 text-center">티어</span>
+                  <span className="col-span-2 text-right">Top3</span>
+                  <span className="col-span-2 text-right">순위</span>
+                </div>
+
+                <div className="space-y-1 max-h-[540px] lg:max-h-[calc(100vh-370px)] overflow-y-auto pr-1">
+                  {filteredChampions.length > 0 ? filteredChampions.map((champ, idx) => {
+                    const isSelected = activeChamp?.champion_name === champ.champion_name;
+                    const badge = getTierBadgeMeta(champ.computedSummary.tier_num);
+                    return (
+                      <button
+                        key={champ.champion_name}
+                        onClick={() => handleSelectChampion(champ.champion_name)}
+                        className={`w-full text-left px-2 py-2 rounded-xl border transition-all grid grid-cols-12 items-center gap-1 ${
+                          isSelected
+                            ? "bg-hextech-gold/15 border-hextech-gold/70 shadow-md"
+                            : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
+                        }`}
+                      >
+                        <span className="col-span-1 text-[11px] font-bold text-slate-500">
+                          {champ.hasRealData ? idx + 1 : "-"}
+                        </span>
+                        <div className="col-span-5 flex items-center gap-2 min-w-0">
+                          <SafeIcon
+                            src={CHAMP_IMG(champ.champion_name, ddVersion)}
+                            alt={champ.kr_name}
+                            className="w-8 h-8 rounded-lg border border-slate-700"
+                            emojiFallback="⚔️"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-white truncate">{champ.kr_name}</div>
+                            <div className="text-[10px] text-slate-500 truncate">
+                              {champ.hasRealData && champ.computedSummary.picks > 0
+                                ? `${champ.computedSummary.picks.toLocaleString()}판`
+                                : "미수집"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="col-span-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border inline-block ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+                        <div className="col-span-2 text-right text-xs font-bold text-sky-300">
+                          {champ.hasRealData && champ.computedSummary.picks > 0 ? `${champ.computedSummary.top3_rate}%` : "-"}
+                        </div>
+                        <div className="col-span-2 text-right text-xs font-bold text-hextech-goldLight">
+                          {champ.hasRealData && champ.computedSummary.picks > 0 ? `${champ.computedSummary.avg_placement}` : "-"}
+                        </div>
+                      </button>
+                    );
+                  }) : (
+                    <div className="py-10 text-center text-xs text-slate-500">조건에 맞는 챔피언이 없습니다.</div>
+                  )}
+                </div>
+              </aside>
+
+              {/* 우측 상세 영역 */}
+              <section ref={detailTopRef} className="lg:col-span-8 xl:col-span-9 space-y-5">
+                {activeChamp && hasRealData ? (
+                  <>
+                    <div className="hextech-card p-6 rounded-2xl">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <SafeIcon
+                              src={CHAMP_IMG(activeChamp.champion_name, ddVersion)}
+                              alt={activeChamp.kr_name}
+                              className="w-20 h-20 rounded-2xl border-2 border-hextech-gold/70 shadow-xl"
+                              emojiFallback="🏆"
+                            />
+                            {summary.tier_num > 0 && (
+                              <span className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-lg text-xs font-black border shadow-lg ${getTierBadgeMeta(summary.tier_num).solid}`}>
+                                {summary.tier_num} 티어
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <h2 className="text-2xl sm:text-3xl font-black text-white">{activeChamp.kr_name}</h2>
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
+                                {summary.picks.toLocaleString()}판 실측
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              {(activeChamp.roles || []).map((r, i) => (
+                                <span key={i} className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700">
+                                  {ROLE_KO_MAP[r] || r}
+                                </span>
+                              ))}
+                              {activeChamp.patch_scope && (
+                                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-hextech-gold/10 text-hextech-goldLight border border-hextech-gold/30">
+                                  패치 {selectedPatch === "ALL" ? activeChamp.patch_scope : selectedPatch}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
+                            <div className="text-[11px] text-slate-400">평균 순위</div>
+                            <div className="text-lg font-extrabold text-hextech-goldLight mt-0.5">{summary.avg_placement}</div>
+                            <div className="text-[10px] text-slate-500">보정 {summary.bayes_placement}</div>
+                          </div>
+                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
+                            <div className="text-[11px] text-slate-400">1등 확률</div>
+                            <div className="text-lg font-extrabold text-emerald-400 mt-0.5">{summary.win_rate}%</div>
+                            <div className="text-[10px] text-slate-500">6팀 기대 16.7%</div>
+                          </div>
+                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
+                            <div className="text-[11px] text-slate-400">상위권 (Top 3)</div>
+                            <div className="text-lg font-extrabold text-sky-300 mt-0.5">{summary.top3_rate}%</div>
+                            <div className="text-[10px] text-slate-500">1~3위 비율</div>
+                          </div>
+                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
+                            <div className="text-[11px] text-slate-400">평균 피해량</div>
+                            <div className="text-lg font-extrabold text-rose-300 mt-0.5">
+                              {summary.avg_damage > 0 ? `${(summary.avg_damage / 1000).toFixed(1)}k` : "-"}
+                            </div>
+                            <div className="text-[10px] text-slate-500">챔피언 대상</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 pt-4 border-t border-slate-800/90 flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 w-fit flex-wrap">
+                        {[
+                          { id: "build", label: "빌드 요약" },
+                          { id: "augments", label: `증강체 (${augmentRarityCounts.전체})` },
+                          { id: "items", label: "아이템" },
+                          { id: "synergies", label: `파트너 조합 (${(activeChamp.best_partners || []).length})` }
+                        ].map(tab => (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                              activeTab === tab.id
+                                ? "bg-hextech-cyan text-slate-950 shadow"
+                                : "text-slate-300 hover:text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 빌드 요약 탭 */}
+                    {activeTab === "build" && (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                          <div className="xl:col-span-7 hextech-card p-5 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                              <h3 className="text-base font-extrabold text-white">⚡ 핵심 증강체</h3>
+                              <button onClick={() => setActiveTab("augments")} className="text-xs font-bold text-hextech-cyan hover:underline">
+                                등급별 전체 보기 →
+                              </button>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
+                                    <th className="py-2 font-semibold">증강체</th>
+                                    <th className="py-2 font-semibold text-center">등급</th>
+                                    <th className="py-2 font-semibold text-right">픽률</th>
+                                    <th className="py-2 font-semibold text-right">평균 순위</th>
+                                    <th className="py-2 font-semibold text-right">Top 3</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/60">
+                                  {processedAugments.slice(0, 6).map((aug, idx) => (
+                                    <tr key={`${aug.name}-${idx}`} className="hover:bg-slate-800/35">
+                                      <td className="py-2.5 pr-2">
+                                        <div className="flex items-center gap-2.5">
+                                          <SafeIcon
+                                            src={aug.icon || aug.icon_url || cdAugmentMetaMap[aug.name]?.icon}
+                                            alt={aug.name}
+                                            className="w-9 h-9 rounded-lg border border-slate-700"
+                                            emojiFallback={aug.rarity === "프리즘" ? "💎" : aug.rarity === "골드" ? "🌟" : "🔹"}
+                                          />
+                                          <div className="text-sm font-bold text-white truncate">{aug.name}</div>
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 text-center">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRarityPillCls(aug.rarity)}`}>
+                                          {aug.rarity}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 text-right">
+                                        <div className="text-xs font-bold text-slate-200">{aug.pick_rate}%</div>
+                                        <div className="text-[10px] text-slate-500">{aug.picks}판</div>
+                                      </td>
+                                      <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{aug.avg}</td>
+                                      <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{aug.top3_rate}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          <div className="xl:col-span-5 hextech-card p-5 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                              <h3 className="text-base font-extrabold text-white">🤝 추천 파트너</h3>
+                              <button onClick={() => setActiveTab("synergies")} className="text-xs font-bold text-hextech-cyan hover:underline">
+                                전체 보기 →
+                              </button>
+                            </div>
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
+                                  <th className="py-2 font-semibold">파트너</th>
+                                  <th className="py-2 font-semibold text-right">평균 순위</th>
+                                  <th className="py-2 font-semibold text-right">1등 확률</th>
+                                  <th className="py-2 font-semibold text-right">Top 3</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60">
+                                {(activeChamp.best_partners || []).slice(0, 6).map((pt, idx) => {
+                                  const pKey = pt.partner || pt.champion;
+                                  return (
+                                    <tr key={`${pKey}-${idx}`} onClick={() => handleSelectChampion(pKey)} className="hover:bg-slate-800/45 cursor-pointer">
+                                      <td className="py-2.5">
+                                        <div className="flex items-center gap-2.5">
+                                          <SafeIcon src={CHAMP_IMG(pKey, ddVersion)} alt={pt.name || pKey} className="w-8 h-8 rounded-lg border border-slate-700" emojiFallback="🤝" />
+                                          <div>
+                                            <div className="text-xs font-bold text-white">{pt.name || pKey}</div>
+                                            <div className="text-[10px] text-slate-500">{pt.games}판</div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{pt.avg ?? pt.avg_placement}</td>
+                                      <td className="py-2.5 text-right text-xs font-bold text-emerald-400">{pt.win_rate != null ? `${pt.win_rate}%` : "-"}</td>
+                                      <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{pt.top3_rate != null ? `${pt.top3_rate}%` : "-"}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                          <div className="hextech-card p-5 rounded-2xl space-y-3">
+                            <h3 className="text-base font-extrabold text-white pb-3 border-b border-slate-800">💎 프리즘 아이템</h3>
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
+                                  <th className="py-2 font-semibold">아이템</th>
+                                  <th className="py-2 font-semibold text-right">평균 순위</th>
+                                  <th className="py-2 font-semibold text-right">1등 확률</th>
+                                  <th className="py-2 font-semibold text-right">Top 3</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60">
+                                {(activeChamp.best_prismatics || []).slice(0, 6).map((item, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-800/35">
+                                    <td className="py-2.5">
+                                      <div className="flex items-center gap-2.5">
+                                        <SafeIcon
+                                          src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, true)}
+                                          fallbackSrc={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
+                                          alt={item.name}
+                                          className="w-9 h-9 rounded-lg border border-fuchsia-400/50"
+                                          emojiFallback="💎"
+                                        />
+                                        <div>
+                                          <div className="text-xs font-bold text-white">{item.name}</div>
+                                          <div className="text-[10px] text-slate-500">{item.picks}판</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{item.avg ?? item.avg_placement}</td>
+                                    <td className="py-2.5 text-right text-xs font-bold text-emerald-400">{item.win ?? item.win_rate}%</td>
+                                    <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{item.top3_rate != null ? `${item.top3_rate}%` : "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="hextech-card p-5 rounded-2xl space-y-3">
+                            <h3 className="text-base font-extrabold text-white pb-3 border-b border-slate-800">🛡️ 핵심 코어 아이템</h3>
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
+                                  <th className="py-2 font-semibold">아이템</th>
+                                  <th className="py-2 font-semibold text-right">픽률</th>
+                                  <th className="py-2 font-semibold text-right">평균 순위</th>
+                                  <th className="py-2 font-semibold text-right">Top 3</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60">
+                                {(activeChamp.core_items || []).slice(0, 6).map((item, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-800/35">
+                                    <td className="py-2.5">
+                                      <div className="flex items-center gap-2.5">
+                                        <SafeIcon
+                                          src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
+                                          fallbackSrc={cdItemIconMap[item.name] || item.icon || item.icon_url}
+                                          alt={item.name}
+                                          className="w-9 h-9 rounded-lg border border-slate-700"
+                                          emojiFallback="🗡️"
+                                        />
+                                        <div>
+                                          <div className="text-xs font-bold text-white">{item.name}</div>
+                                          <div className="text-[10px] text-slate-500">{item.picks}판</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 text-right text-xs font-bold text-slate-200">{item.pick_rate != null ? `${item.pick_rate}%` : "-"}</td>
+                                    <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{item.avg ?? item.avg_placement}</td>
+                                    <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{item.top3_rate != null ? `${item.top3_rate}%` : "-"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 증강체 전용 탭 */}
+                    {activeTab === "augments" && (
+                      <div className="hextech-card p-6 rounded-2xl space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                          <div>
+                            <h3 className="text-lg font-extrabold text-white">⚡ {activeChamp.kr_name} 증강체 실측 통계</h3>
+                            <p className="text-xs text-slate-400">Riot 공식 cherry-augments.json 기준으로 실버·골드·프리즘 등급을 분류했습니다.</p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                              {["전체", "실버", "골드", "프리즘"].map(r => (
+                                <button
+                                  key={r}
+                                  onClick={() => setRarityFilter(r)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    rarityFilter === r
+                                      ? r === "프리즘"
+                                        ? "bg-fuchsia-500 text-white"
+                                        : r === "골드"
+                                          ? "bg-amber-500 text-slate-950"
+                                          : r === "실버"
+                                            ? "bg-slate-300 text-slate-950"
+                                            : "bg-hextech-cyan text-slate-950"
+                                      : "text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  {r} ({augmentRarityCounts[r] || 0})
+                                </button>
+                              ))}
+                            </div>
+                            <select
+                              value={augmentSort}
+                              onChange={(e) => setAugmentSort(e.target.value)}
+                              className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-200 outline-none"
+                            >
+                              <option value="composite">종합 추천순</option>
+                              <option value="pick">픽률순</option>
+                              <option value="top3">Top 3 승률순</option>
+                              <option value="win">1등 확률순</option>
+                              <option value="avg">평균 순위순</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {processedAugments.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="text-[11px] text-slate-400 border-b border-slate-800">
+                                  <th className="py-2.5 pl-2 font-semibold">증강체</th>
+                                  <th className="py-2.5 font-semibold text-center">등급</th>
+                                  <th className="py-2.5 font-semibold text-right">픽률</th>
+                                  <th className="py-2.5 font-semibold text-right">평균 순위</th>
+                                  <th className="py-2.5 font-semibold text-right">1등 확률</th>
+                                  <th className="py-2.5 pr-2 font-semibold text-right">Top 3 승률</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60">
+                                {processedAugments.map((aug, idx) => (
+                                  <tr key={`${aug.name}-${idx}`} className="hover:bg-slate-800/40">
+                                    <td className="py-3 pl-2 pr-3">
+                                      <div className="flex items-center gap-3">
+                                        <SafeIcon
+                                          src={aug.icon || aug.icon_url || cdAugmentMetaMap[aug.name]?.icon}
+                                          alt={aug.name}
+                                          className="w-11 h-11 rounded-xl border border-slate-700"
+                                          emojiFallback={aug.rarity === "프리즘" ? "💎" : aug.rarity === "골드" ? "🌟" : "🔹"}
+                                        />
+                                        <div className="font-extrabold text-sm text-white">{aug.name}</div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 text-center">
+                                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${getRarityPillCls(aug.rarity)}`}>
+                                        {aug.rarity}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 text-right">
+                                      <div className="text-sm font-bold text-white">{aug.pick_rate}%</div>
+                                      <div className="text-[10px] text-slate-500">{aug.picks}판</div>
+                                    </td>
+                                    <td className="py-3 text-right text-sm font-extrabold text-hextech-goldLight">{aug.avg}</td>
+                                    <td className="py-3 text-right text-sm font-bold text-emerald-400">{aug.win}%</td>
+                                    <td className="py-3 pr-2 text-right text-sm font-extrabold text-sky-300">{aug.top3_rate}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                            선택한 등급({rarityFilter})에 해당하는 실측 증강 데이터가 없습니다.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 아이템 전용 탭 */}
+                    {activeTab === "items" && (
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div className="hextech-card p-6 rounded-2xl space-y-3">
+                          <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">💎 프리즘 아이템</h3>
+                          {(activeChamp.best_prismatics || []).map((item, idx) => (
+                            <div key={idx} className="prismatic-border bg-slate-900/85 p-3.5 rounded-xl flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <SafeIcon
+                                  src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, true)}
+                                  fallbackSrc={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
+                                  alt={item.name}
+                                  className="w-11 h-11 rounded-lg border border-fuchsia-400/40"
+                                  emojiFallback="💎"
+                                />
+                                <div className="min-w-0">
+                                  <div className="text-sm font-bold text-white truncate">{item.name}</div>
+                                  <div className="text-[11px] text-slate-400">픽률 {item.pick_rate ?? "-"}% · {item.picks}판</div>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-xs font-extrabold text-hextech-goldLight">평균 {item.avg ?? item.avg_placement}위</div>
+                                <div className="text-[11px] text-emerald-400 font-semibold">1등 {item.win ?? item.win_rate}%</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="hextech-card p-6 rounded-2xl space-y-3">
+                          <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">🛡️ 핵심 코어 아이템</h3>
+                          {(activeChamp.core_items || []).map((item, idx) => (
+                            <div key={idx} className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <SafeIcon
+                                  src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
+                                  fallbackSrc={cdItemIconMap[item.name] || item.icon || item.icon_url}
+                                  alt={item.name}
+                                  className="w-11 h-11 rounded-lg border border-slate-700"
+                                  emojiFallback="🗡️"
+                                />
+                                <div className="min-w-0">
+                                  <div className="text-sm font-bold text-white truncate">{item.name}</div>
+                                  <div className="text-[11px] text-slate-400">픽률 {item.pick_rate ?? "-"}% · {item.picks}판</div>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-xs font-extrabold text-hextech-goldLight">평균 {item.avg ?? item.avg_placement}위</div>
+                                {item.top3_rate != null && <div className="text-[11px] text-sky-300 font-semibold">Top3 {item.top3_rate}%</div>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 파트너 조합 탭 */}
+                    {activeTab === "synergies" && (
+                      <div className="hextech-card p-6 rounded-2xl space-y-4">
+                        <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">🤝 {activeChamp.kr_name} 3v3 파트너 시너지</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                          {(activeChamp.best_partners || []).map((pt, idx) => {
+                            const pKey = pt.partner || pt.champion;
+                            return (
+                              <button
+                                key={`${pKey}-${idx}`}
+                                onClick={() => handleSelectChampion(pKey)}
+                                className="text-left bg-slate-900/80 hover:bg-slate-800/85 border border-slate-800 hover:border-hextech-gold/60 p-4 rounded-xl transition-all flex items-center justify-between gap-3"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <SafeIcon src={CHAMP_IMG(pKey, ddVersion)} alt={pt.name || pKey} className="w-12 h-12 rounded-xl border border-slate-700" emojiFallback="🤝" />
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-sm text-white truncate">{pt.name || pKey}</div>
+                                    <div className="text-[11px] text-slate-400">{pt.games}판</div>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <div className="text-xs font-extrabold text-hextech-goldLight">평균 {pt.avg ?? pt.avg_placement}위</div>
+                                  {pt.win_rate != null && <div className="text-[11px] text-emerald-400 font-semibold">1등 {pt.win_rate}%</div>}
+                                  {pt.top3_rate != null && <div className="text-[11px] text-sky-300 font-semibold">Top3 {pt.top3_rate}%</div>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="hextech-card p-12 rounded-2xl text-center space-y-2">
+                    <div className="text-2xl">📭</div>
+                    <div className="text-sm font-bold text-white">{activeChamp?.kr_name || "선택한 챔피언"}의 수집된 매치 데이터가 없습니다.</div>
+                    <p className="text-xs text-slate-400">좌측 목록에서 실측 데이터가 있는 챔피언을 선택하거나, 더 많은 매치를 수집한 JSON을 업로드해 주세요.</p>
+                  </div>
+                )}
+              </section>
+            </main>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(
+      <ErrorBoundary>
+        <ArenaGuideApp />
+      </ErrorBoundary>
+    );
+  </script>
+</body>
+</html>
