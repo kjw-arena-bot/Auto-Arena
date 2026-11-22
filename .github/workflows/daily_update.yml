@@ -1,22 +1,16 @@
 name: Daily Arena 3v3 Data Update
 
 on:
-
-매일 한국시간 새벽 4시 (UTC 19:00) 자동 실행
-
 schedule:
 - cron: "0 19 * * *"
-
-GitHub Actions 탭에서 언제든 수동 실행 가능
-
 workflow_dispatch:
 inputs:
 max_new_matches:
-description: "이번 실행에서 추가로 수집할 최대 3v3 매치 수"
+description: "Max new 3v3 matches to collect"
 required: false
 default: "200"
 aggregate_only:
-description: "신규 수집 없이 기존 체크포인트만 재집계 (true / false)"
+description: "Re-aggregate checkpoint only (true or false)"
 required: false
 default: "false"
 
@@ -28,18 +22,18 @@ collect-and-publish:
 runs-on: ubuntu-latest
 
 steps:
-  - name: 저장소 체크아웃
+  - name: Checkout repository
     uses: actions/checkout@v4
 
-  - name: Python 3.11 설정
+  - name: Setup Python 3.11
     uses: actions/setup-python@v5
     with:
       python-version: "3.11"
 
-  - name: 필수 패키지 설치
+  - name: Install dependencies
     run: pip install --upgrade pip requests
 
-  - name: 아레나 3v3 매치 수집 및 통합 집계 실행
+  - name: Run Arena 3v3 collector
     env:
       RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
       AGGREGATE_ONLY: ${{ github.event.inputs.aggregate_only || 'false' }}
@@ -47,13 +41,14 @@ steps:
       ROUTING_REGION: "asia"
     run: python arena_3v3_collector.py
 
-  - name: 갱신된 데이터 자동 커밋 및 푸시
+  - name: Commit and push updated data
     run: |
       git config user.name "github-actions[bot]"
       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      git add arena_3v3_checkpoint.jsonl arena_3v3_guide_all_champs.json
+      [ -f arena_3v3_checkpoint.jsonl ] && git add arena_3v3_checkpoint.jsonl
+      [ -f arena_3v3_guide_all_champs.json ] && git add arena_3v3_guide_all_champs.json
       if git diff --staged --quiet; then
-        echo "변경된 데이터가 없어 커밋을 건너뜁니다."
+        echo "No data changes to commit."
       else
         git commit -m "chore: daily arena 3v3 stats update ($(date -u +'%Y-%m-%d'))"
         git push
