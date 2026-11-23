@@ -52,6 +52,13 @@
       border: 1px solid rgba(192, 132, 252, 0.45);
       box-shadow: 0 0 16px -8px rgba(192, 132, 252, 0.35);
     }
+    @keyframes tooltipFadeIn {
+      from { opacity: 0; transform: translateY(4px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .tooltip-pop {
+      animation: tooltipFadeIn 0.14s ease-out forwards;
+    }
     ::-webkit-scrollbar { width: 7px; height: 7px; }
     ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
     ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.45); border-radius: 9999px; }
@@ -122,7 +129,10 @@
       // 실버
       "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
       "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
-      "우당탕탕": "실버", "빨랫줄": "실버"
+      "우당탕탕": "실버", "빨랫줄": "실버", "점액 천지": "실버", "불여우": "실버",
+      "주스 압착기": "실버", "에너지 충전": "실버",
+      // 모자장수 관련 골드 보강
+      "퀘스트: 미치광이 모자장수": "골드", "해트트릭": "골드"
     };
 
     const AUGMENT_NAME_CORRECTIONS = {
@@ -446,6 +456,715 @@
     }
 
     // =========================================================================
+    // 2-1. 공용 1등 플랜 전용 아이템/증강 툴팁 사전 및 5대 플랜 데이터
+    // =========================================================================
+
+    const PLAN_ENTITY_TOOLTIPS = {
+      // --- 저주 플랜 (저주받은 힘 계열 5종 전체) ---
+      "파멸의 예언자": {
+        type: "augment", rarity: "프리즘", aliases: ["파멸의 저주"],
+        tag: "스킬 적중 → 적응형 능력치",
+        summary: "적 챔피언에게 스킬을 적중시키면 영구적인 저주받은 힘을 얻고, 저주받은 힘에 비례해 적응형 능력치를 획득합니다.",
+        details: [
+          "1번째 증강으로 단독 선택 시 스택 누적이 까다로워 비추천",
+          "이미 다른 저주 증강으로 스택이 쌓인 중·후반에 집으면 효율이 폭발"
+        ]
+      },
+      "공포를 부르는 자": {
+        type: "augment", rarity: "프리즘",
+        tag: "주변 오라 → 최대 체력",
+        summary: "주변에 오라를 생성해 범위 안의 적 챔피언 하나당 영구적인 저주받은 힘을 지속적으로 얻고, 저주받은 힘에 비례해 최대 체력을 획득합니다.",
+        details: ["근접 탱커·브루저가 적에게 붙어 초반부터 꾸준히 저주 스택을 수급하기 좋은 파츠"]
+      },
+      "어둠의 축복": {
+        type: "augment", rarity: "골드",
+        tag: "회복·보호막 → 스킬 가속",
+        summary: "아군(또는 자신)의 체력을 회복시키거나 보호막을 씌울 때 영구적인 저주받은 힘을 얻고, 저주받은 힘에 비례해 스킬 가속을 획득합니다.",
+        details: ["힐·실드 스킬이 있는 챔피언이나 서포터가 초반부터 빠르게 스택을 쌓기 유리"]
+      },
+      "죽음의 손길": {
+        type: "augment", rarity: "골드",
+        tag: "평타 적중 → 적중 시 마법 피해",
+        summary: "적 챔피언에게 기본 공격을 적중시키면 영구적인 저주받은 힘을 얻고, 저주받은 힘에 비례해 적중 시 추가 마법 피해를 입힙니다.",
+        details: ["공격 속도가 빠르거나 평타 비중이 높은 챔피언에게 최적화된 저주 파츠"]
+      },
+      "신성 모독자": {
+        type: "augment", rarity: "실버",
+        tag: "CC·이동 불가 → 방어력·마저",
+        summary: "적 챔피언을 이동 불가 상태로 만들거나 이동 스킬을 사용할 수 없게(고정) 하면 영구적인 저주받은 힘을 얻고, 저주받은 힘에 비례해 방어력과 마법 저항력을 획득합니다.",
+        details: ["CC기가 많은 탱커·서포터·브루저가 실버 등급에서 가장 가성비 좋게 저주 스택과 탱킹력을 챙기는 핵심 파츠"]
+      },
+
+      // --- 모자장수 플랜 ---
+      "퀘스트: 미치광이 모자장수": {
+        type: "augment", rarity: "골드", aliases: ["퀘스트: 미친 모자 장수", "미치광이 모자장수"],
+        tag: "필수 퀘스트",
+        summary: "전투 라운드 종료 시 모자 10개 이상 착용 시 완료. 완료 후 모자 1개당 적응형 능력치 +12, 방어력·마법 저항력 +6, 이동 속도 +3, 강인함 +0.5%를 얻습니다.",
+        details: [
+          "리스크: 라운드 패배 시 보유한 모자의 50%를 잃음 (해트트릭으로 해결)",
+          "상한 주의: 모자 효과는 최대 40개까지만 적용 (40개 초과 구매 금지)"
+        ]
+      },
+      "해트트릭": {
+        type: "augment", rarity: "골드",
+        tag: "필수 조합",
+        summary: "즉시 모자 3개를 획득하고 상점 카파 주스(모자) 가격이 대폭 할인(500g → 150g)됩니다.",
+        details: [
+          "핵심: 라운드에서 패배해도 모자를 잃지 않아 퀘스트 완료 후 모자 개수 유지 가능",
+          "저렴한 가격으로 빠르게 40개 상한까지 모자를 쌓을 수 있음"
+        ]
+      },
+      "주스 압착기": {
+        type: "augment", rarity: "실버",
+        tag: "팀 시너지",
+        summary: "본인과 팀원 모두 상점의 모든 주스 가격이 50% 할인되며, 카파 주스 구매 시 모자를 +1개 추가로 획득합니다.",
+        details: [
+          "팀원이 대신 먹어줘도 내 상점 할인과 추가 모자(+1) 효과가 그대로 적용",
+          "해트트릭과 겹치면 초저가로 1회당 모자 2개씩 양산 가능"
+        ]
+      },
+
+      // --- 자동화 플랜: 필수 프리즘 아이템 3종 ---
+      "번개 막대": {
+        type: "item", rarity: "프리즘", itemId: 447119,
+        tag: "필수 프리즘 ①",
+        stats: "스킬 가속 · 보호막 · 자동 사용 가속",
+        summary: "보유한 모든 자동 사용 증강의 재사용 대기시간(발동 시간)에 스킬 가속이 적용됩니다.",
+        details: [
+          "증강 알고리즘 보정: 보유 시 이후 증강 선택 단계에서 자동 사용 증강 등장 확률이 상승",
+          "자동화 플랜의 시동이자 쿨타임 가속 핵심 아이템"
+        ]
+      },
+      "마공화살 동료": {
+        type: "item", rarity: "프리즘", itemId: 443081,
+        tag: "필수 프리즘 ②",
+        stats: "공격력 +70 · 공격 속도 +50% · 이동 속도 +6%",
+        summary: "[지원 사격] 10초마다 자동 사용 화살 발사 / [방출] 충전 상태로 공격 시 보유한 모든 자동 사용 효과가 즉시 발동합니다.",
+        details: [
+          "자동 사용 증강의 쿨타임을 무시하고 충전 발동마다 강제로 연쇄 발동",
+          "룬 조각기와 함께 갖춰지면 평타 없이 스킬만 맞춰도 자동 사용이 무한 발동"
+        ]
+      },
+      "룬 조각기": {
+        type: "item", rarity: "프리즘", itemId: 447108,
+        tag: "필수 프리즘 ③",
+        stats: "주문력 +80 · 스킬 가속 +20 · 이동 속도 +4%",
+        summary: "[나선] 이동·평타·스킬 피해 시 충전 상태가 30 쌓이고 준비되면 스킬로도 충전 행동이 발동합니다. [소용돌이] 발동마다 라운드 종료까지 룬 중첩을 얻어 발사체로 마법 피해를 입힙니다.",
+        details: [
+          "마공화살 동료 연계: 스킬 적중만으로 충전 발동 → 자동 사용 증강 강제 발동 연쇄",
+          "도트(지속 피해) 및 짧은 쿨타임 스킬 챔피언에게 압도적 효율"
+        ]
+      },
+
+      // --- 자동화 플랜: 핵심 딜링 증강 ---
+      "양자 연산": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 물관 적용",
+        summary: "주기적으로 주변 650 범위를 원형으로 베어 물리 피해를 입히고, 바깥쪽 적중 시 최대 체력 비례 추가 피해·둔화 및 체력 회복을 얻습니다.",
+        details: [
+          "관통력 적용: 물리 피해 판정이므로 물리 관통력(물관·방관)에 따라 딜량 상승",
+          "★ 3레벨(최대 레벨) 효과: 모든 자동 사용 효과가 25% / 10% / 1% 확률로 최대 4회 다중 발동!"
+        ]
+      },
+      "야생 불꽃": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 마관 적용",
+        summary: "주기적으로 근처 적들 사이를 튕기는 불덩이를 자동 시전해 마법 피해를 입힙니다.",
+        details: [
+          "관통력 적용: 마법 피해 판정이므로 마법 관통력(마관)에 따라 딜량 상승",
+          "★ 3레벨(최대 레벨) 효과: 시전할 때마다 최대 튕김 횟수가 +1씩 무한 증가",
+          "무한 루프 엔진: 스킬 피해 판정으로 룬 조각기를 발동시켜 마공화살 동료와 무한 순환"
+        ]
+      },
+
+      // --- 자동화 플랜: 보조 자동 사용 증강 ---
+      "신성한 중재": {
+        type: "augment", rarity: "골드",
+        tag: "보조 자동 사용",
+        summary: "일정 시간 후 자신과 주변 아군에게 잠시 동안 무적(타릭 R)을 자동 시전합니다.",
+        details: ["자동화 루프가 예열되는 시간을 벌어주며 3v3 한타에서 압도적인 변수 창출"]
+      },
+      "늘어나는 팔": {
+        type: "augment", rarity: "골드", aliases: ["로켓 팔"],
+        tag: "보조 자동 사용",
+        summary: "주기적으로 주변 적에게 블리츠크랭크 로켓 손을 자동 발사해 끌어옵니다.",
+        details: ["도망치는 적을 사거리 안으로 강제 소환해 양자 연산·야생 불꽃·룬 조각기를 끊김 없이 적중"]
+      },
+      "점액 천지": {
+        type: "augment", rarity: "실버",
+        tag: "보조 자동 사용 · 룬 조각기 발동",
+        summary: "주기적으로 주변에 점액을 터뜨려 최대 체력 비례 마법 피해를 입히고 회복 방울을 생성합니다.",
+        details: ["실버 등급이면서도 스킬 피해 판정으로 룬 조각기를 발동시키는 가성비 핵심 파츠"]
+      },
+
+      // --- 자동화 플랜: 충전 스택 가속 파츠 ---
+      "질책": {
+        type: "item", rarity: "프리즘", itemId: 447107,
+        tag: "충전 가속 프리즘",
+        stats: "충전 상태 극대화 · 이동/공격 시너지",
+        summary: "충전 상태 효과를 강화하고 연쇄 발동을 돕는 프리즘 아이템입니다.",
+        details: ["마공화살 동료·룬 조각기와 함께 충전 스택 회전율을 압도적으로 끌어올림"]
+      },
+      "벼락폭풍검": {
+        type: "item", rarity: "전설", itemId: 6699, aliases: ["벼폭검"],
+        tag: "충전 가속 코어",
+        stats: "공격력 · 물리 관통력 · 스킬 가속",
+        summary: "돌진 및 은신 시 충전 상태가 훨씬 빠르게 쌓이고, 충전 공격 시 추가 물리 피해와 둔화를 적용합니다.",
+        details: ["충전 스택을 폭발적으로 채워 마공화살 동료 발동 주기를 단축 (양자 연산 물관 보너스까지 시너지)"]
+      },
+      "스태틱의 단검": {
+        type: "item", rarity: "전설", itemId: 3087, aliases: ["스태틱"],
+        tag: "충전 가속 코어",
+        stats: "공격력 · 공격 속도 · 이동 속도",
+        summary: "높은 공격 속도와 이동 속도를 바탕으로 충전 및 연쇄 번개 피해를 빠르게 터뜨립니다.",
+        details: ["충전 스택 수급 속도를 크게 끌어올려 자동 사용 연쇄 발동을 보조"]
+      },
+      "불여우": {
+        type: "augment", rarity: "실버", aliases: ["여우불"],
+        tag: "충전 가속 · 룬 조각기 발동",
+        summary: "주기적으로 주변 적을 추적하는 여우불 3개를 자동 시전해 마법 피해를 입힙니다.",
+        details: ["스킬 피해 판정으로 룬 조각기의 충전 스택을 폭발적으로 쌓아 무한 루프를 가속"]
+      },
+      "에너지 충전": {
+        type: "augment", rarity: "실버",
+        tag: "충전 속도 압도적",
+        summary: "이동 및 공격으로 충전 상태가 쌓이는 속도가 대폭 증가합니다.",
+        details: ["룬 조각기·마공화살 동료와 함께 자동화 무한 루프를 완성하는 최우선 실버 증강"]
+      },
+      "감바 모루": {
+        type: "augment", rarity: "프리즘",
+        tag: "진입 조건 추천",
+        summary: "능력치 모루와 아이템 모루(프리즘 모루 포함) 가격이 크게 할인됩니다.",
+        details: ["프리즘 3종이 필요한 자동화 플랜의 막대한 골드 부담을 획기적으로 줄여줌"]
+      },
+
+      // --- 4번 플랜: 검무 + 대지의 각성 + 소환사 혁명 ---
+      "검무": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 물관 적용",
+        summary: "소환사 주문으로 지정 불가 상태가 되어 적들 사이를 빠르게 순간이동하며 연속 물리 타격을 가합니다.",
+        details: [
+          "관통력 적용: 물리 피해 판정이므로 물리 관통력(물관·방관)에 따라 딜량 상승",
+          "킨코우 십수(킨코우 살수)와 함께 사용 시 약점 타격이 연쇄 발동해 효율 극대화"
+        ]
+      },
+      "킨코우 십수": {
+        type: "item", rarity: "프리즘", itemId: 447118, aliases: ["킨코우 살수"],
+        tag: "검무 핵심 시너지",
+        stats: "공격력 · 물리 관통력 · 이동 속도",
+        summary: "적 주변에 급소(약점)를 표시하고, 급소 방향에서 타격 시 최대 체력 비례 추가 고정 피해와 이동 속도를 얻습니다.",
+        details: ["검무 시전 중 적 주위를 빠르게 순간이동하며 타격할 때 급소가 연쇄적으로 터져 폭발적 시너지"]
+      },
+      "대지의 각성": {
+        type: "augment", rarity: "프리즘",
+        tag: "필수 콤보 파츠",
+        summary: "돌진·점멸·순간이동 시 이동 경로에 폭발을 일으켜 광역 물리 피해를 입힙니다.",
+        details: ["검무 시전 중 발생하는 모든 연속 순간이동마다 폭발이 연쇄 발동해 적 팀을 순식간에 녹임"]
+      },
+      "소환사 혁명": {
+        type: "augment", rarity: "골드",
+        tag: "2연속 콤보 완성",
+        summary: "소환사 주문을 한 번 더 사용할 수 있습니다.",
+        details: ["소환사 주문 슬롯에 들어가는 검무를 2연속 시전해 검무+대지의 각성 폭딜을 2배로 터뜨림"]
+      },
+
+      // --- 5번 플랜: 거인의 결의 ---
+      "거인의 결의": {
+        type: "augment", rarity: "프리즘",
+        tag: "원거리 사거리 증가",
+        summary: "적중 시 스택이 쌓여 기본 능력치(적응형 능력치·방마저·강인함)와 함께 공격 사거리까지 증가합니다.",
+        details: [
+          "원거리 챔피언이 확보 시 안전하게 스택을 쌓고 사거리 증가 이점을 극대화 가능",
+          "적중 시 효과(온힛) 발동 횟수에 따라 스택이 훨씬 빠르게 누적됨"
+        ]
+      },
+      "양손잡이": {
+        type: "augment", rarity: "프리즘",
+        tag: "온힛 스택 가속",
+        summary: "공격 속도 상한이 해제되고 공격 속도가 대폭 상승하는 대신 피해량이 소폭 조정됩니다.",
+        details: ["압도적인 공속으로 거인의 결의 적중 시 스택을 순식간에 누적"]
+      },
+      "탄환 세례": {
+        type: "augment", rarity: "프리즘",
+        tag: "온힛 스택 가속",
+        summary: "공격 속도가 크게 증가하고 평타가 연사 형태로 강화됩니다.",
+        details: ["타수가 폭발적으로 늘어나 거인의 결의 스택을 빠르게 쌓는 핵심 프리즘 증강"]
+      },
+      "두 배 세 배": {
+        type: "augment", rarity: "골드",
+        tag: "온힛 스택 가속",
+        summary: "매 3번째 기본 공격마다 적중 시 효과가 2번 발동합니다.",
+        details: ["구인수의 격노검과 시너지를 내며 거인의 결의 스택 누적 속도를 크게 끌어올림"]
+      },
+      "구인수의 격노검": {
+        type: "item", rarity: "전설", itemId: 3124, aliases: ["구인수"],
+        tag: "필수 코어",
+        stats: "공격력 · 주문력 · 공격 속도 · 환영 타격",
+        summary: "기본 공격 시 적중 시 효과가 추가로 발동(환영 타격)합니다.",
+        details: ["거인의 결의 스택을 가장 빠르게 쌓는 필수 1코어. 이후에는 버티기 위한 탱템 위주 빌드 추천"]
+      }
+    };
+
+    const COMMON_WIN_PLANS = [
+      {
+        id: "curse",
+        num: "01",
+        icon: "☠️",
+        title: "저주 증강 플랜",
+        subtitle: "팀원 시너지로 라운드당 스택 상한을 끌어올리는 후반 왕귀형",
+        accent: "from-purple-500/20 to-fuchsia-500/5 border-purple-400/40",
+        badges: ["팀 시너지 핵심", "초반 스택 누적", "후반 왕귀"],
+        sections: [
+          {
+            heading: "저주 증강 전체 목록 5종 (스택 조건 & 보상 능력치)",
+            entities: ["파멸의 예언자", "공포를 부르는 자", "어둠의 축복", "죽음의 손길", "신성 모독자"],
+            bullets: [
+              "파멸의 예언자 (프리즘): 스킬 적중 시 스택 → 적응형 능력치 획득",
+              "공포를 부르는 자 (프리즘): 주변 적 오라로 지속 스택 → 최대 체력 획득",
+              "어둠의 축복 (골드): 회복·보호막 부여 시 스택 → 스킬 가속 획득",
+              "죽음의 손길 (골드): 적 챔피언 기본 공격 적중 시 스택 → 적중 시 추가 마법 피해 획득",
+              "신성 모독자 (실버): 적 이동 불가(CC) 적중 시 스택 → 방어력·마법 저항력 획득"
+            ]
+          },
+          {
+            heading: "파멸의 예언자(파멸의 저주) 선택 타이밍",
+            bullets: [
+              "1번째 증강 (비추천): 초반에 단독으로 집으면 스택을 쌓기 까다로워 되도록 피하는 것이 좋습니다.",
+              "중·후반 증강 (고효율): 이미 다른 저주 증강으로 스택이 쌓여 있는 중·후반에 확보하면 효율이 매우 뛰어납니다."
+            ]
+          }
+        ]
+      },
+      {
+        id: "hatter",
+        num: "02",
+        icon: "🎩",
+        title: "모자장수 플랜",
+        subtitle: "해트트릭으로 모자 손실을 막고 40개 상한까지 스탯을 폭발시키는 퀘스트 조합",
+        accent: "from-amber-500/20 to-yellow-500/5 border-amber-400/45",
+        badges: ["해트트릭 필수", "최대 40개 상한", "퀘스트 완성형"],
+        sections: [
+          {
+            heading: "필수 조합 & 팀 시너지",
+            entities: ["퀘스트: 미치광이 모자장수", "해트트릭", "주스 압착기"],
+            bullets: [
+              "모자장수 플랜은 반드시 「해트트릭」과 「퀘스트: 미치광이 모자장수」 증강을 함께 먹어야 완성됩니다.",
+              "해트트릭을 보유하면 라운드 패배 시에도 모자를 잃지 않아 퀘스트 완료 후 모자 개수를 안정적으로 유지할 수 있습니다.",
+              "상점에서 모자(카파 주스)를 훨씬 저렴한 가격에 구매할 수 있어 빠르게 모자를 쌓을 수 있습니다."
+            ]
+          },
+          {
+            heading: "골드 낭비 주의 (상한 40개)",
+            warning: "모자 능력치는 최대 40개까지만 적용됩니다! 40개를 초과해서 구매해도 스탯은 오르지 않고 골드만 빠져나가므로, 40개를 채운 뒤에는 모자 구매를 멈추고 아이템·모루에 투자하세요."
+          }
+        ]
+      },
+      {
+        id: "autocast",
+        num: "03",
+        icon: "⚡",
+        title: "자동화 플랜",
+        subtitle: "번개 막대 · 마공화살 동료 · 룬 조각기 3종 프리즘으로 자동 사용 무한 루프 완성",
+        accent: "from-cyan-500/20 to-sky-500/5 border-cyan-400/45",
+        badges: ["프리즘 3종 필수", "저점 낮음 · 고점 최상", "3레벨 무한 루프"],
+        sections: [
+          {
+            heading: "필수 프리즘 아이템 3종",
+            entities: ["번개 막대", "마공화살 동료", "룬 조각기"],
+            bullets: [
+              "번개 막대: 자동 사용 발동 시간에 스킬 가속이 적용되며, 보유 시 증강 선택 알고리즘을 타서 자동 사용 증강 등장 확률이 올라갑니다.",
+              "마공화살 동료 (필수): 충전 상태 공격 시 보유한 자동 사용 효과가 즉시 발동되어 자동화 플랜의 핵심 엔진이 됩니다.",
+              "룬 조각기: 스킬 적중만으로 충전 상태를 쌓고 발동시켜, 마공화살 동료와 결합하면 평타 없이 스킬만 맞춰도 자동 사용이 끊임없이 연쇄됩니다. (도트·짧은 쿨 스킬 최적화)"
+            ]
+          },
+          {
+            heading: "핵심 딜링 자동 사용 증강 (3레벨 효과 필수 체크)",
+            entities: ["양자 연산", "야생 불꽃"],
+            bullets: [
+              "양자 연산 (물리 관통력 적용): 3레벨 달성 시 모든 자동 사용 효과가 25% / 10% / 1% 확률로 최대 4회 다중 발동합니다.",
+              "야생 불꽃 (마법 관통력 적용): 3레벨 달성 시 시전할 때마다 최대 튕김 횟수가 +1씩 무한 증가하며, 스킬 피해 판정으로 룬 조각기를 발동시켜 무한 루프의 중심이 됩니다."
+            ]
+          },
+          {
+            heading: "추천 보조 자동 사용 증강",
+            entities: ["신성한 중재", "늘어나는 팔", "점액 천지"],
+            bullets: [
+              "신성한 중재: 자동 무적 시전으로 예열 시간 확보 및 3v3 한타 변수 창출",
+              "늘어나는 팔 (로켓 팔): 적을 강제로 사거리 안으로 끌어와 자동 사용 딜링을 끊김 없이 적중",
+              "점액 천지: 실버 등급이면서도 스킬 피해 판정으로 룬 조각기를 발동시키는 가성비 핵심 파츠"
+            ]
+          },
+          {
+            heading: "충전 스택 가속 파츠 (무한 루프 가속)",
+            entities: ["질책", "벼락폭풍검", "스태틱의 단검", "불여우", "에너지 충전"],
+            bullets: [
+              "아이템: 질책(프리즘), 벼락폭풍검(벼폭검), 스태틱의 단검(스태틱)으로 충전 스택 회전율 극대화",
+              "증강: 불여우(여우불)와 에너지 충전은 충전 스택 수급 효율이 압도적으로 뛰어납니다."
+            ]
+          },
+          {
+            heading: "⚠️ 주의점 & 각 보는 타이밍",
+            entities: ["감바 모루"],
+            warning: "프리즘 아이템 3개가 필수라 골드가 매우 많이 필요합니다. 이블린·오른 등 고점을 볼 수 있는 조우자나 「감바 모루」를 먹었을 때 노리는 것이 좋으며, 조건 없이 무지성으로 진입하면 파츠가 모이기 전에 일찍 탈락할 확률이 높습니다. (저점은 낮지만 완성 시 고점은 최상급)"
+          }
+        ]
+      },
+      {
+        id: "bladewaltz",
+        num: "04",
+        icon: "⚔️",
+        title: "검무 + 대지의 각성 + 소환사 혁명 플랜",
+        subtitle: "지정 불가 연속 순간이동 폭발을 2연속으로 꽂아 넣는 원콤 암살 플랜",
+        accent: "from-rose-500/20 to-orange-500/5 border-rose-400/45",
+        badges: ["물리 관통력 적용", "킨코우 십수 시너지", "2연속 폭딜"],
+        sections: [
+          {
+            heading: "핵심 3종 증강 & 추천 프리즘 아이템",
+            entities: ["검무", "킨코우 십수", "대지의 각성", "소환사 혁명"],
+            bullets: [
+              "검무 (물리 관통력 적용): 지정 불가 상태로 적 사이를 순간이동하며 연속 타격합니다. 프리즘 아이템 「킨코우 십수(킨코우 살수)」와 함께 쓰면 약점 타격이 연쇄 발동해 효율이 매우 뛰어납니다.",
+              "대지의 각성: 검무 시전 중 발생하는 연속 순간이동마다 이동 경로에 광역 폭발이 연쇄 발동해 압도적인 폭딜을 꽂습니다.",
+              "소환사 혁명: 소환사 주문을 한 번 더 사용할 수 있게 해 주어, 검무 + 대지의 각성 콤보를 라운드 내 2연속으로 터뜨릴 수 있습니다."
+            ]
+          }
+        ]
+      },
+      {
+        id: "titans",
+        num: "05",
+        icon: "🗿",
+        title: "거인의 결의 플랜",
+        subtitle: "원거리 챔피언의 사거리 증가 + 적중 시 효과(온힛) 고속 스택 누적 플랜",
+        accent: "from-emerald-500/20 to-teal-500/5 border-emerald-400/45",
+        badges: ["원거리 추천", "사거리 증가", "구인수 + 탱템"],
+        sections: [
+          {
+            heading: "핵심 증강 & 온힛 스택 가속 파츠",
+            entities: ["거인의 결의", "양손잡이", "탄환 세례", "두 배 세 배"],
+            bullets: [
+              "거인의 결의는 스택이 쌓이면 기본 스탯뿐만 아니라 공격 사거리까지 증가하므로, 원거리 챔피언이 먹었을 때 안전하게 스택을 쌓기 쉬워 효율이 뛰어납니다.",
+              "스택이 적중 시 효과(온힛)에 따라 빠르게 쌓이므로 「양손잡이」, 「탄환 세례」, 「두 배 세 배」 같은 증강들과 조합하면 스택이 폭발적으로 누적됩니다."
+            ]
+          },
+          {
+            heading: "추천 아이템 빌드 (구인수 + 생존 탱템)",
+            entities: ["구인수의 격노검"],
+            bullets: [
+              "구인수의 격노검: 적중 시 효과 발동을 극대화해 거인의 결의 스택을 가장 빠르게 끌어올리는 필수 코어입니다.",
+              "생존 탱템: 일정 스택이 쌓이기 전까지 죽지 않고 버티는 것이 핵심이므로, 구인수 이후에는 탱커·생존 아이템을 올려 안정적으로 왕귀하는 빌드가 가장 강력합니다."
+            ]
+          }
+        ]
+      }
+    ];
+
+    function TooltipEntityBadge({ name, ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const wrapRef = useRef(null);
+
+      const meta = PLAN_ENTITY_TOOLTIPS[name] || {
+        type: "augment",
+        rarity: "프리즘",
+        summary: "아레나 3v3 핵심 시너지 파츠입니다.",
+        details: []
+      };
+
+      // 외부 클릭 시 모바일 팝업 닫기
+      useEffect(() => {
+        if (!isOpen) return;
+        const handleOutside = (e) => {
+          if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+            setIsOpen(false);
+          }
+        };
+        document.addEventListener("mousedown", handleOutside);
+        document.addEventListener("touchstart", handleOutside);
+        return () => {
+          document.removeEventListener("mousedown", handleOutside);
+          document.removeEventListener("touchstart", handleOutside);
+        };
+      }, [isOpen]);
+
+      // 공식 아이콘 자동 탐색 (이름 + 별칭 + itemId 폴백)
+      const { iconUrl, fallbackUrl } = useMemo(() => {
+        const candidates = [name, ...(meta.aliases || [])];
+        if (meta.type === "item") {
+          let cdIcon = "";
+          let ddId = meta.itemId || null;
+          for (const c of candidates) {
+            if (!cdIcon && cdItemIconMap[c]) cdIcon = cdItemIconMap[c];
+            if (!ddId && ddItemNameMap[c]) ddId = ddItemNameMap[c];
+          }
+          const ddIcon = ddId ? DD_ITEM_IMG(ddId, ddVersion) : "";
+          const isPrismatic = meta.rarity === "프리즘";
+          return {
+            iconUrl: isPrismatic ? (cdIcon || ddIcon) : (ddIcon || cdIcon),
+            fallbackUrl: isPrismatic ? ddIcon : cdIcon
+          };
+        } else {
+          let augIcon = "";
+          for (const c of candidates) {
+            const fixed = normalizeAugmentName(c);
+            if (cdAugmentMetaMap[fixed]?.icon) {
+              augIcon = cdAugmentMetaMap[fixed].icon;
+              break;
+            }
+          }
+          return { iconUrl: augIcon, fallbackUrl: "" };
+        }
+      }, [name, meta, ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap]);
+
+      const borderTone =
+        meta.rarity === "프리즘"
+          ? "border-fuchsia-400/55 bg-fuchsia-950/35 hover:border-fuchsia-300"
+          : meta.rarity === "골드"
+            ? "border-amber-400/50 bg-amber-950/30 hover:border-amber-300"
+            : meta.rarity === "전설"
+              ? "border-hextech-cyan/50 bg-cyan-950/30 hover:border-hextech-cyan"
+              : "border-slate-500/55 bg-slate-800/60 hover:border-slate-300";
+
+      const badgeTone =
+        meta.rarity === "프리즘"
+          ? "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50"
+          : meta.rarity === "골드"
+            ? "bg-amber-500/20 text-amber-200 border-amber-400/50"
+            : meta.rarity === "전설"
+              ? "bg-hextech-cyan/20 text-hextech-cyan border-hextech-cyan/45"
+              : "bg-slate-600/30 text-slate-200 border-slate-400/45";
+
+      return (
+        <div
+          ref={wrapRef}
+          className="relative inline-block"
+          onMouseEnter={() => setIsOpen(true)}
+          onMouseLeave={() => setIsOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setIsOpen(prev => !prev)}
+            className={`group flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl border transition-all text-left shadow-sm ${borderTone}`}
+          >
+            <SafeIcon
+              src={iconUrl}
+              fallbackSrc={fallbackUrl}
+              alt={name}
+              className="w-8 h-8 rounded-lg border border-slate-700/80"
+              emojiFallback={meta.type === "item" ? "💎" : meta.rarity === "프리즘" ? "💠" : meta.rarity === "골드" ? "🌟" : "🔹"}
+            />
+            <div className="leading-tight">
+              <div className="text-xs font-extrabold text-white group-hover:text-hextech-goldLight transition-colors flex items-center gap-1">
+                <span>{name}</span>
+              </div>
+              <div className="text-[10px] text-slate-400 font-semibold">
+                {meta.type === "item" ? `${meta.rarity} 아이템` : `${meta.rarity} 증강`}
+                {meta.tag ? ` · ${meta.tag}` : ""}
+              </div>
+            </div>
+          </button>
+
+          {isOpen && (
+            <div
+              role="tooltip"
+              className="tooltip-pop absolute z-50 left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-full mb-2.5 w-[290px] sm:w-[340px] max-w-[88vw] rounded-2xl bg-slate-950/98 border border-hextech-gold/55 shadow-2xl p-4 backdrop-blur-xl pointer-events-auto"
+            >
+              <div className="flex items-start gap-3 pb-2.5 border-b border-slate-800">
+                <SafeIcon
+                  src={iconUrl}
+                  fallbackSrc={fallbackUrl}
+                  alt={name}
+                  className="w-11 h-11 rounded-xl border border-hextech-gold/50 shrink-0"
+                  emojiFallback={meta.type === "item" ? "💎" : "✨"}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm font-black text-white">{name}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${badgeTone}`}>
+                      {meta.rarity} {meta.type === "item" ? "아이템" : "증강"}
+                    </span>
+                  </div>
+                  {meta.stats && (
+                    <div className="text-[11px] font-semibold text-hextech-cyan mt-1">{meta.stats}</div>
+                  )}
+                  {meta.tag && !meta.stats && (
+                    <div className="text-[11px] font-semibold text-hextech-goldLight mt-1">{meta.tag}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2.5 space-y-2 text-xs leading-relaxed text-slate-200">
+                <p>{meta.summary}</p>
+                {meta.details && meta.details.length > 0 && (
+                  <ul className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                    {meta.details.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5 text-[11px] text-slate-300">
+                        <span className="text-hextech-gold mt-0.5 shrink-0">▸</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function CommonPlansView({ ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap, onBackToAnalytics }) {
+      const [selectedPlanId, setSelectedPlanId] = useState("ALL");
+
+      const visiblePlans = useMemo(() => {
+        if (selectedPlanId === "ALL") return COMMON_WIN_PLANS;
+        return COMMON_WIN_PLANS.filter(p => p.id === selectedPlanId);
+      }, [selectedPlanId]);
+
+      return (
+        <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+          {/* 상단 배너 */}
+          <div className="hextech-card p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-hextech-gold/20 text-hextech-goldLight border border-hextech-gold/45">
+                  🏆 3v3 아레나 공용 1등 플랜
+                </span>
+                <span className="text-xs text-slate-400">
+                  아이콘에 마우스를 올리면(모바일은 터치) 상세 툴팁과 시너지 팁이 표시됩니다
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                모든 챔피언 공용 1등 승리 플랜 (5종)
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-400">
+                챔피언 개별 빌드와 별개로, 증강·프리즘 아이템 조합만으로 게임을 뒤집고 1등을 노릴 수 있는 핵심 승리 공식입니다.
+              </p>
+            </div>
+            <button
+              onClick={onBackToAnalytics}
+              className="shrink-0 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-hextech-cyan/60 text-xs font-bold text-slate-200 transition-all self-start md:self-center"
+            >
+              📊 챔피언 실측 분석으로 돌아가기
+            </button>
+          </div>
+
+          {/* 플랜 빠른 필터 바 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setSelectedPlanId("ALL")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                selectedPlanId === "ALL"
+                  ? "bg-hextech-gold text-hextech-bg border-hextech-gold shadow-lg"
+                  : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
+              }`}
+            >
+              전체 플랜 ({COMMON_WIN_PLANS.length})
+            </button>
+            {COMMON_WIN_PLANS.map(plan => (
+              <button
+                key={plan.id}
+                onClick={() => setSelectedPlanId(plan.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                  selectedPlanId === plan.id
+                    ? "bg-hextech-cyan text-slate-950 border-hextech-cyan shadow-lg"
+                    : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
+                }`}
+              >
+                <span>{plan.icon}</span>
+                <span>{plan.num}. {plan.title.replace(" 플랜", "")}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 플랜 카드 리스트 */}
+          <div className="space-y-6">
+            {visiblePlans.map(plan => (
+              <article
+                key={plan.id}
+                className={`hextech-card rounded-3xl border bg-gradient-to-br ${plan.accent} p-5 sm:p-7 space-y-5`}
+              >
+                {/* 카드 헤더 */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-800/80">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-950/80 border border-slate-700/80 flex items-center justify-center text-2xl shrink-0 shadow-inner">
+                      {plan.icon}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-black tracking-wider text-hextech-gold">PLAN {plan.num}</span>
+                        <h3 className="text-xl sm:text-2xl font-black text-white">{plan.title}</h3>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-300 mt-1">{plan.subtitle}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {plan.badges.map((b, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-950/75 text-slate-200 border border-slate-700/80"
+                      >
+                        {b}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 섹션별 상세 내용 */}
+                <div className="grid grid-cols-1 gap-4">
+                  {plan.sections.map((sec, sIdx) => (
+                    <div
+                      key={sIdx}
+                      className="bg-slate-950/60 border border-slate-800/85 rounded-2xl p-4 sm:p-5 space-y-3.5"
+                    >
+                      <h4 className="text-sm font-extrabold text-hextech-goldLight flex items-center gap-2">
+                        <span className="w-1.5 h-4 rounded-full bg-hextech-cyan inline-block"></span>
+                        <span>{sec.heading}</span>
+                      </h4>
+
+                      {/* 아이콘 + 마우스 오버 툴팁 칩 영역 */}
+                      {sec.entities && sec.entities.length > 0 && (
+                        <div className="flex flex-wrap gap-2.5 pt-0.5">
+                          {sec.entities.map(entityName => (
+                            <TooltipEntityBadge
+                              key={entityName}
+                              name={entityName}
+                              ddVersion={ddVersion}
+                              ddItemNameMap={ddItemNameMap}
+                              cdItemIconMap={cdItemIconMap}
+                              cdAugmentMetaMap={cdAugmentMetaMap}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 설명 불릿 리스트 */}
+                      {sec.bullets && sec.bullets.length > 0 && (
+                        <ul className="space-y-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                          {sec.bullets.map((b, bIdx) => (
+                            <li key={bIdx} className="flex items-start gap-2">
+                              <span className="text-hextech-cyan mt-1 shrink-0 text-[10px]">●</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* 주의사항 강조 박스 */}
+                      {sec.warning && (
+                        <div className="rounded-xl bg-rose-950/45 border border-rose-500/45 px-4 py-3 text-xs sm:text-[13px] text-rose-100 leading-relaxed flex items-start gap-2.5">
+                          <span className="text-base shrink-0">⚠️</span>
+                          <span>{sec.warning}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </main>
+      );
+    }
+
+    // =========================================================================
     // 3. 메인 애플리케이션 (외부 통계 하드코딩 0%, 업로드된 JSON 실측 전용)
     // =========================================================================
 
@@ -465,6 +1184,7 @@
       const [ddSyncState, setDdSyncState] = useState("loading");
 
       // UI 상태
+      const [viewMode, setViewMode] = useState("analytics"); // analytics | plans
       const [selectedChampKey, setSelectedChampKey] = useState("");
       const [activeTab, setActiveTab] = useState("build");
       const [searchQuery, setSearchQuery] = useState("");
@@ -981,7 +1701,36 @@
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {availablePatches.length > 0 && (
+                {/* 메인 페이지 전환 탭 (실측 분석 / 공용 1등 플랜) */}
+                <div className="flex items-center bg-slate-900/95 p-1 rounded-xl border border-slate-700/80">
+                  <button
+                    onClick={() => setViewMode("analytics")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      viewMode === "analytics"
+                        ? "bg-hextech-cyan text-slate-950 shadow"
+                        : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    📊 실측 분석
+                  </button>
+                  <button
+                    onClick={() => setViewMode("plans")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1 ${
+                      viewMode === "plans"
+                        ? "bg-hextech-gold text-hextech-bg shadow"
+                        : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    <span>🏆 공용 1등 플랜</span>
+                    <span className={`px-1.5 py-0.2 rounded text-[10px] ${
+                      viewMode === "plans" ? "bg-slate-950/20 text-hextech-bg" : "bg-hextech-gold/20 text-hextech-goldLight"
+                    }`}>
+                      {COMMON_WIN_PLANS.length}
+                    </span>
+                  </button>
+                </div>
+
+                {viewMode === "analytics" && availablePatches.length > 0 && (
                   <select
                     value={selectedPatch}
                     onChange={(e) => setSelectedPatch(e.target.value)}
@@ -1024,8 +1773,17 @@
             </div>
           </header>
 
-          {/* JSON 미업로드 시: 깔끔한 드롭존 안내 화면 */}
-          {!hasUploadedData ? (
+          {/* 공용 1등 플랜 전용 페이지 */}
+          {viewMode === "plans" ? (
+            <CommonPlansView
+              ddVersion={ddVersion}
+              ddItemNameMap={ddItemNameMap}
+              cdItemIconMap={cdItemIconMap}
+              cdAugmentMetaMap={cdAugmentMetaMap}
+              onBackToAnalytics={() => setViewMode("analytics")}
+            />
+          ) : !hasUploadedData ? (
+            /* JSON 미업로드 시: 깔끔한 드롭존 안내 화면 */
             <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-14 flex items-center justify-center">
               <div className="hextech-card p-8 sm:p-12 rounded-3xl text-center space-y-6 w-full">
                 <div className="w-16 h-16 mx-auto rounded-2xl bg-hextech-gold/15 border border-hextech-gold/40 flex items-center justify-center text-3xl">
@@ -1048,6 +1806,15 @@
                   <div className="text-4xl">📂</div>
                   <div className="text-base font-extrabold text-white">클릭하거나 JSON 파일을 여기로 드래그하세요</div>
                   <div className="text-xs text-slate-500">지원 파일: arena_3v3_guide_all_champs.json</div>
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    onClick={() => setViewMode("plans")}
+                    className="px-5 py-2.5 rounded-xl bg-hextech-gold/15 hover:bg-hextech-gold/25 border border-hextech-gold/50 text-sm font-extrabold text-hextech-goldLight transition-all"
+                  >
+                    🏆 JSON 없이 「공용 1등 플랜 5종」 먼저 보기 →
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-2">
