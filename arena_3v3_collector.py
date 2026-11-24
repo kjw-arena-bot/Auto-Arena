@@ -141,7 +141,7 @@ OFFICIAL_AUGMENT_RARITY_KO: Dict[str, str] = {
     "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
     "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
     "우당탕탕": "실버", "빨랫줄": "실버", "점액 천지": "실버", "불여우": "실버",
-    "주스 압착기": "실버", "에너지 충전": "실버", "약탈": "실버",
+    "주스 압착기": "실버", "에너지 충전": "실버", "침탈": "실버",
 }
 
 # 구 명칭 -> 공식 한국어 명칭 치환 사전
@@ -348,7 +348,9 @@ class GameMetadata:
         self.lower_champ_to_canonical: Dict[str, str] = {}
         self.items_by_id: Dict[int, Dict[str, Any]] = {}
         self.item_name_to_latest_id: Dict[str, int] = {}
+        self.prismatic_name_to_id: Dict[str, int] = {}
         self.cdragon_item_icon_by_name: Dict[str, str] = {}
+        self.cdragon_prismatic_icon_by_name: Dict[str, str] = {}
         self.prismatic_item_ids: Set[int] = set()
         self.prismatic_item_names: Set[str] = set(KNOWN_PRISMATIC_ITEMS_KO)
         self.augments_by_id: Dict[int, Dict[str, Any]] = {}
@@ -424,6 +426,8 @@ class GameMetadata:
                 if is_prismatic:
                     self.prismatic_item_ids.add(iid)
                     self.prismatic_item_names.add(name)
+                    if 440000 <= iid < 450000:
+                        self.prismatic_name_to_id[name] = iid
 
             log_print(
                 f"  -> Data Dragon v{self.dd_version}: 챔피언 {len(self.champions_by_id)}명, "
@@ -515,7 +519,10 @@ class GameMetadata:
 
                 icon_url = normalize_cdragon_asset(item.get("iconPath") or "")
                 if icon_url:
-                    self.cdragon_item_icon_by_name[name] = icon_url
+                    if 440000 <= iid < 450000:
+                        self.cdragon_prismatic_icon_by_name[name] = icon_url
+                    if name not in self.cdragon_item_icon_by_name or (440000 <= iid < 450000):
+                        self.cdragon_item_icon_by_name[name] = icon_url
 
                 is_prismatic = (
                     name in self.prismatic_item_names
@@ -525,11 +532,13 @@ class GameMetadata:
                 if is_prismatic:
                     self.prismatic_item_ids.add(iid)
                     self.prismatic_item_names.add(name)
+                    if 440000 <= iid < 450000:
+                        self.prismatic_name_to_id[name] = iid
 
-                existing = self.items_by_id.get(iid)
-                if existing:
-                    existing["is_prismatic"] = existing["is_prismatic"] or is_prismatic
-                    if (is_prismatic or not existing.get("icon_url")) and icon_url:
+                if iid in self.items_by_id:
+                    existing = self.items_by_id[iid]
+                    existing["is_prismatic"] = existing.get("is_prismatic", False) or is_prismatic
+                    if not existing.get("icon_url") and icon_url:
                         existing["icon_url"] = icon_url
                 else:
                     self.items_by_id[iid] = {
@@ -1150,10 +1159,14 @@ def aggregate_all_champions(
             top3_r = round(stats["w_top3"] / wp, 1)
             pr = round((n / raw_total_picks) * 100.0, 1)
             bp = round(bayes_smooth(n, avg_p, m=10.0, prior=overall_avg), 2)
-            latest_id = meta.item_name_to_latest_id.get(pname)
-            cd_icon = meta.cdragon_item_icon_by_name.get(pname, "")
-            dd_icon = (meta.items_by_id.get(latest_id) or {}).get("icon_url", "") if latest_id else ""
-            item_icon = cd_icon or dd_icon
+            latest_id = meta.prismatic_name_to_id.get(pname) or meta.item_name_to_latest_id.get(pname)
+            dd_icon = (
+                f"https://ddragon.leagueoflegends.com/cdn/{meta.dd_version}/img/item/{latest_id}.png"
+                if latest_id and (440000 <= latest_id < 450000)
+                else ""
+            )
+            cd_icon = meta.cdragon_prismatic_icon_by_name.get(pname) or meta.cdragon_item_icon_by_name.get(pname, "")
+            item_icon = dd_icon or cd_icon
             prism_list.append({
                 "name": pname,
                 "id": latest_id,
