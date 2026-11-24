@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LoL 아레나 3v3 실측 데이터 분석기</title>
+  <title>LoL 아레나 3v3 실측 데이터 분석기 & 공용 1등 플랜</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -31,22 +31,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     body {
       background-color: #070b14;
       background-image:
-        radial-gradient(circle at 12% 10%, rgba(10, 200, 185, 0.07), transparent 36%),
-        radial-gradient(circle at 88% 8%, rgba(200, 155, 60, 0.09), transparent 38%);
+        radial-gradient(circle at 12% 10%, rgba(10, 200, 185, 0.08), transparent 36%),
+        radial-gradient(circle at 88% 8%, rgba(200, 155, 60, 0.1), transparent 38%);
       color: #e2e8f0;
       min-height: 100vh;
+      overflow-x: hidden;
     }
     .hextech-card {
-      background: linear-gradient(180deg, rgba(17, 26, 46, 0.94) 0%, rgba(11, 18, 33, 0.96) 100%);
-      border: 1px solid rgba(200, 155, 60, 0.22);
-      box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.65);
+      background: linear-gradient(180deg, rgba(17, 26, 46, 0.95) 0%, rgba(11, 18, 33, 0.97) 100%);
+      border: 1px solid rgba(200, 155, 60, 0.24);
+      box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.7);
     }
     .prismatic-border {
       border: 1px solid rgba(192, 132, 252, 0.45);
@@ -66,22 +64,21 @@
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="app"></div>
 
-  <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
-
+  <script>
     // =========================================================================
-    // 1. Riot 공식 메타데이터 상수 (통계 없음 · 오직 명칭/등급/아이콘 동기화용)
+    // 1. 전역 상태 & 공식 메타데이터 상수
     // =========================================================================
-
     const FALLBACK_DD_VERSION = "16.23.1";
     const CDRAGON_ASSET_PREFIX = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/";
     const CHERRY_AUGMENTS_KO_URL = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/ko_kr/v1/cherry-augments.json";
     const CDRAGON_ARENA_KO_URL = "https://raw.communitydragon.org/latest/cdragon/arena/ko_kr.json";
 
-    const CHAMP_IMG = (key, ver = FALLBACK_DD_VERSION) => `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${key}.png`;
-    const DD_ITEM_IMG = (id, ver = FALLBACK_DD_VERSION) => `https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${id}.png`;
+    const CHAMP_IMG = (key, ver = FALLBACK_DD_VERSION) =>
+      `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${key}.png`;
+    const DD_ITEM_IMG = (id, ver = FALLBACK_DD_VERSION) =>
+      `https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${id}.png`;
 
     const ROLE_KO_MAP = {
       Fighter: "전사",
@@ -92,7 +89,6 @@
       Tank: "탱커"
     };
 
-    // 한국어 클라이언트 공식 증강 등급 검증 사전 (오직 등급 교정용, 통계 없음)
     const OFFICIAL_AUGMENT_RARITY_KO = {
       // 프리즘
       "감바 모루": "프리즘", "거석상의 용기": "프리즘", "거인": "프리즘", "거인 학살자": "프리즘",
@@ -102,7 +98,7 @@
       "탄환 세례": "프리즘", "탭 댄서": "프리즘", "파멸의 예언자": "프리즘", "거인의 결의": "프리즘",
       "검무": "프리즘", "검을 뽑아라": "프리즘", "결투의 대가": "프리즘", "대지의 각성": "프리즘",
       "마법 소녀": "프리즘", "마트료시카": "프리즘", "불길한 서약": "프리즘", "야생 불꽃": "프리즘",
-      "양자 연산": "프리즘", "우주의 중심": "프리즘", "유리 대포": "프리즘", "저주의 화염": "프리즘",
+      "양자 연산": "프리즘", "우주의 중심": "프리즘", "유리 대포": "프리즘",
       "전환: 혼돈": "프리즘", "정신 결속": "프리즘", "찜솥": "프리즘", "최상급 조준경 부착": "프리즘",
       "케르베로스": "프리즘", "퀘스트: 우글렛의 마녀 모자": "프리즘", "프로틴 음료": "프리즘",
       "궁극기 대변혁": "프리즘", "궁극의 룰렛": "프리즘", "궤도형 레이저": "프리즘", "끝판왕": "프리즘",
@@ -130,7 +126,7 @@
       "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
       "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
       "우당탕탕": "실버", "빨랫줄": "실버", "점액 천지": "실버", "불여우": "실버",
-      "주스 압착기": "실버", "에너지 충전": "실버",
+      "주스 압착기": "실버", "에너지 충전": "실버", "침탈": "실버",
       // 모자장수 관련 골드 보강
       "퀘스트: 미치광이 모자장수": "골드", "해트트릭": "골드"
     };
@@ -147,320 +143,11 @@
       "모든 것을 바쳐": "너만을 위해"
     };
 
-    const normalizeAugmentName = (rawName) => {
-      const n = String(rawName || "").trim();
-      return AUGMENT_NAME_CORRECTIONS[n] || n;
-    };
-
-    const normalizeCDragonAsset = (rawPath) => {
-      if (!rawPath) return "";
-      const trimmed = String(rawPath).trim();
-      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
-      let cleaned = trimmed.toLowerCase();
-      if (cleaned.startsWith("/lol-game-data/assets/")) {
-        cleaned = cleaned.slice("/lol-game-data/assets/".length);
-      } else if (cleaned.startsWith("lol-game-data/assets/")) {
-        cleaned = cleaned.slice("lol-game-data/assets/".length);
-      }
-      return CDRAGON_ASSET_PREFIX + cleaned.replace(/^\/+/, "");
-    };
-
-    const calibrateNumericRarityMap = (rawAugs = []) => {
-      const votes = {};
-      const numSet = new Set();
-      rawAugs.forEach(a => {
-        if (typeof a?.rarity !== "number") return;
-        const code = a.rarity;
-        numSet.add(code);
-        const name = normalizeAugmentName(a.nameTRA || a.name || "");
-        const known = OFFICIAL_AUGMENT_RARITY_KO[name];
-        if (known) {
-          if (!votes[code]) votes[code] = { 실버: 0, 골드: 0, 프리즘: 0 };
-          votes[code][known] += 1;
-        }
-      });
-      const result = {};
-      Object.entries(votes).forEach(([code, counts]) => {
-        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-        if (best && best[1] > 0) result[Number(code)] = best[0];
-      });
-      const sorted = Array.from(numSet).sort((a, b) => a - b);
-      if (Object.keys(result).length < 3 && sorted.length >= 3) {
-        if (numSet.has(4) && numSet.has(8)) {
-          if (!result[0]) result[0] = "실버";
-          if (!result[1]) result[1] = "실버";
-          if (!result[4]) result[4] = "골드";
-          if (!result[8]) result[8] = "프리즘";
-        } else {
-          if (!result[sorted[0]]) result[sorted[0]] = "실버";
-          if (!result[sorted[1]]) result[sorted[1]] = "골드";
-          if (!result[sorted[2]]) result[sorted[2]] = "프리즘";
-        }
-      }
-      return result;
-    };
-
-    const resolveOfficialRarity = (rawRarity, augName = "", numMap = {}) => {
-      const cleanName = normalizeAugmentName(augName);
-      if (OFFICIAL_AUGMENT_RARITY_KO[cleanName]) {
-        return OFFICIAL_AUGMENT_RARITY_KO[cleanName];
-      }
-      if (typeof rawRarity === "string") {
-        const lower = rawRarity.trim().toLowerCase();
-        if (lower.includes("prism") || lower.includes("프리즘")) return "프리즘";
-        if (lower.includes("gold") || lower.includes("골드")) return "골드";
-        if (lower.includes("silver") || lower.includes("실버")) return "실버";
-        const asNum = Number(lower);
-        if (Number.isFinite(asNum)) {
-          if (numMap[asNum]) return numMap[asNum];
-          if (asNum === 2 || asNum === 8) return "프리즘";
-          if (asNum === 1 || asNum === 4) return "골드";
-          return "실버";
-        }
-      }
-      if (typeof rawRarity === "number") {
-        if (numMap[rawRarity]) return numMap[rawRarity];
-        if (rawRarity === 2 || rawRarity === 8) return "프리즘";
-        if (rawRarity === 1 || rawRarity === 4) return "골드";
-        return "실버";
-      }
-      return "실버";
-    };
-
-    const CHOSUNG_LIST = [
-      "ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"
-    ];
-    const getKoreanChosung = (str) => {
-      let out = "";
-      for (const ch of String(str || "")) {
-        const code = ch.charCodeAt(0) - 0xac00;
-        if (code >= 0 && code <= 11171) {
-          out += CHOSUNG_LIST[Math.floor(code / 588)];
-        } else {
-          out += ch.toLowerCase();
-        }
-      }
-      return out;
-    };
-
-    const getTierNum = (tier, explicitNum = null) => {
-      if (explicitNum && explicitNum >= 1 && explicitNum <= 4) return explicitNum;
-      if (tier === "S") return 1;
-      if (tier === "A") return 2;
-      if (tier === "B") return 3;
-      if (tier === "C") return 4;
-      return 0;
-    };
-
-    const getTierBadgeMeta = (tierNum) => {
-      if (tierNum === 1) return { label: "1티어", cls: "bg-sky-500/20 text-sky-300 border-sky-400/50", solid: "bg-sky-500 text-slate-950 border-sky-300" };
-      if (tierNum === 2) return { label: "2티어", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-400/50", solid: "bg-emerald-500 text-slate-950 border-emerald-300" };
-      if (tierNum === 3) return { label: "3티어", cls: "bg-amber-500/20 text-amber-300 border-amber-400/45", solid: "bg-amber-500 text-slate-950 border-amber-300" };
-      if (tierNum === 4) return { label: "4티어", cls: "bg-rose-500/15 text-rose-300 border-rose-500/40", solid: "bg-rose-500 text-white border-rose-300" };
-      return { label: "-", cls: "bg-slate-800 text-slate-500 border-slate-700", solid: "bg-slate-700 text-slate-300 border-slate-600" };
-    };
-
-    const getRarityPillCls = (rarity) => {
-      if (rarity === "프리즘") return "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40";
-      if (rarity === "골드") return "bg-amber-500/20 text-amber-300 border-amber-400/40";
-      return "bg-slate-600/25 text-slate-300 border-slate-500/40";
-    };
-
-    const resolveLatestItemIcon = (item, ddVersion, ddItemNameMap = {}, cdItemIconMap = {}, preferCDragon = false) => {
-      const name = String(item?.name || "").trim();
-      if (preferCDragon && cdItemIconMap[name]) return cdItemIconMap[name];
-      const mappedId = item?.id || ddItemNameMap[name];
-      if (mappedId) return DD_ITEM_IMG(mappedId, ddVersion);
-      return cdItemIconMap[name] || item?.icon || item?.icon_url || "";
-    };
-
-    const computeAugmentComposite = (aug, champPicks, champAvg, champWin) => {
-      const picks = Number(aug.picks || 0);
-      const avg = Number(aug.avg ?? aug.avg_placement ?? champAvg ?? 3.5);
-      const win = Number(aug.win ?? aug.win_rate ?? champWin ?? 16.7);
-      const top3 = aug.top3_rate != null
-        ? Number(aug.top3_rate)
-        : Number(Math.min(95, Math.max(15, 50 + (3.5 - avg) * 26)).toFixed(1));
-      const pickRate = aug.pick_rate != null
-        ? Number(aug.pick_rate)
-        : Number(((picks / Math.max(champPicks || 1, 1)) * 100).toFixed(1));
-
-      if (aug.composite_score != null && Number.isFinite(Number(aug.composite_score))) {
-        return { ...aug, picks, avg, win, top3_rate: top3, pick_rate: pickRate, composite_score: Number(aug.composite_score) };
-      }
-
-      const m = 12;
-      const bayesPlace = (picks * avg + m * (champAvg || 3.5)) / (picks + m);
-      const bayesWin = (picks * win + m * (champWin || 16.7)) / (picks + m);
-      const winScore = Math.min(Math.max((bayesWin / 42) * 100, 0), 100);
-      const placeScore = Math.min(Math.max(((4.5 - bayesPlace) / 2.5) * 100, 0), 100);
-      const pickScore = Math.min(Math.max((Math.log1p(pickRate) / Math.log1p(24)) * 100, 0), 100);
-      const composite = Number((winScore * 0.35 + placeScore * 0.30 + pickScore * 0.35).toFixed(1));
-
-      return { ...aug, picks, avg: Number(avg.toFixed(2)), win: Number(win.toFixed(1)), top3_rate: top3, pick_rate: pickRate, composite_score: composite };
-    };
-
-    const computePatchFilteredSummary = (champ, selectedPatch, allPatchesDesc) => {
-      if (!champ?.hasRealData) {
-        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
-      }
-
-      const patchStats = champ.patch_stats || {};
-      const patchKeys = Object.keys(patchStats);
-
-      if (patchKeys.length === 0) {
-        const s = champ.summary || {};
-        const picks = Number(s.picks || 0);
-        const avg = Number(s.avg_placement ?? 3.5);
-        const bp = Number(s.bayes_placement ?? ((picks * avg + 25 * 3.5) / (picks + 25)));
-        const tier = picks < 20 ? "B" : bp <= 3.32 ? "S" : bp <= 3.46 ? "A" : bp <= 3.60 ? "B" : "C";
-        return {
-          tier,
-          tier_num: getTierNum(tier, s.tier_num ?? s.opgg_tier),
-          picks,
-          avg_placement: Number(avg.toFixed(2)),
-          bayes_placement: Number(bp.toFixed(2)),
-          top3_rate: Number((s.top3_rate ?? 50).toFixed(1)),
-          win_rate: Number((s.win_rate ?? 16.7).toFixed(1)),
-          avg_damage: Math.round(s.avg_damage || 0)
-        };
-      }
-
-      const weightCurve = [1.0, 0.75, 0.5, 0.35, 0.25];
-      const patchWeightMap = {};
-      allPatchesDesc.forEach((p, i) => {
-        patchWeightMap[p] = weightCurve[Math.min(i, weightCurve.length - 1)];
-      });
-
-      const targetKeys = selectedPatch === "ALL" ? patchKeys : (patchStats[selectedPatch] ? [selectedPatch] : []);
-      if (targetKeys.length === 0) {
-        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
-      }
-
-      let rawTotalPicks = 0;
-      let weightedPicksSum = 0;
-      let weightedPlaceSum = 0;
-      let weightedTop3Sum = 0;
-      let weightedWinSum = 0;
-      let weightedDmgSum = 0;
-
-      targetKeys.forEach(pKey => {
-        const st = patchStats[pKey];
-        const n = Number(st.picks || 0);
-        if (n <= 0) return;
-        const w = selectedPatch === "ALL" ? (patchWeightMap[pKey] ?? 0.5) : 1.0;
-        const effN = n * w;
-        rawTotalPicks += n;
-        weightedPicksSum += effN;
-        weightedPlaceSum += Number(st.avg_placement || 3.5) * effN;
-        weightedTop3Sum += Number(st.top3_rate || 50) * effN;
-        weightedWinSum += Number(st.win_rate || 16.7) * effN;
-        weightedDmgSum += Number(st.avg_damage || 0) * effN;
-      });
-
-      if (rawTotalPicks === 0 || weightedPicksSum <= 0) {
-        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
-      }
-
-      const avgPlacement = Number((weightedPlaceSum / weightedPicksSum).toFixed(2));
-      const bayesPlacement = Number(((weightedPicksSum * avgPlacement + 25 * 3.5) / (weightedPicksSum + 25)).toFixed(2));
-      const top3Rate = Number((weightedTop3Sum / weightedPicksSum).toFixed(1));
-      const winRate = Number((weightedWinSum / weightedPicksSum).toFixed(1));
-      const avgDamage = Math.round(weightedDmgSum / weightedPicksSum);
-      const tier = rawTotalPicks < 20 ? "B" : bayesPlacement <= 3.32 ? "S" : bayesPlacement <= 3.46 ? "A" : bayesPlacement <= 3.60 ? "B" : "C";
-
-      return {
-        tier,
-        tier_num: getTierNum(tier, champ.summary?.tier_num ?? champ.summary?.opgg_tier),
-        picks: rawTotalPicks,
-        avg_placement: avgPlacement,
-        bayes_placement: bayesPlacement,
-        top3_rate: top3Rate,
-        win_rate: winRate,
-        avg_damage: avgDamage
-      };
-    };
-
     // =========================================================================
-    // 2. 공용 UI 컴포넌트
+    // 2. 공용 1등 플랜 5종 & 아이템·증강 상세 툴팁 데이터
     // =========================================================================
-
-    class ErrorBoundary extends React.Component {
-      constructor(props) {
-        super(props);
-        this.state = { hasError: false, errorMsg: "" };
-      }
-      static getDerivedStateFromError(error) {
-        return { hasError: true, errorMsg: error?.message || "렌더링 오류가 발생했습니다." };
-      }
-      render() {
-        if (this.state.hasError) {
-          return (
-            <div className="min-h-screen flex items-center justify-center p-6">
-              <div className="hextech-card max-w-md w-full p-6 rounded-2xl text-center space-y-4">
-                <div className="text-3xl">⚠️</div>
-                <h2 className="text-lg font-bold text-white">화면 표시 중 오류가 발생했습니다</h2>
-                <p className="text-xs text-slate-400 break-all">{this.state.errorMsg}</p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 rounded-xl bg-hextech-gold text-hextech-bg font-bold text-sm"
-                >
-                  새로고침
-                </button>
-              </div>
-            </div>
-          );
-        }
-        return this.props.children;
-      }
-    }
-
-    function SafeIcon({ src, fallbackSrc = "", alt = "", className = "w-10 h-10 rounded-lg", emojiFallback = "✨" }) {
-      const [currentSrc, setCurrentSrc] = useState(src || fallbackSrc || "");
-      const [triedFallback, setTriedFallback] = useState(false);
-      const [failed, setFailed] = useState(!(src || fallbackSrc));
-
-      useEffect(() => {
-        setCurrentSrc(src || fallbackSrc || "");
-        setTriedFallback(false);
-        setFailed(!(src || fallbackSrc));
-      }, [src, fallbackSrc]);
-
-      if (failed || !currentSrc) {
-        return (
-          <div
-            className={`${className} bg-slate-800/90 border border-slate-700 flex items-center justify-center text-slate-300 text-sm font-bold shrink-0 select-none`}
-            title={alt}
-          >
-            {emojiFallback}
-          </div>
-        );
-      }
-
-      return (
-        <img
-          src={currentSrc}
-          alt={alt}
-          loading="lazy"
-          className={`${className} object-cover shrink-0 bg-slate-900`}
-          onError={() => {
-            if (!triedFallback && fallbackSrc && fallbackSrc !== currentSrc) {
-              setTriedFallback(true);
-              setCurrentSrc(fallbackSrc);
-            } else {
-              setFailed(true);
-            }
-          }}
-        />
-      );
-    }
-
-    // =========================================================================
-    // 2-1. 공용 1등 플랜 전용 아이템/증강 툴팁 사전 및 5대 플랜 데이터
-    // =========================================================================
-
     const PLAN_ENTITY_TOOLTIPS = {
-      // --- 저주 플랜 (저주받은 힘 계열 5종 전체) ---
+      // --- 저주 플랜 (저주받은 힘 계열 6종 전체) ---
       "파멸의 예언자": {
         type: "augment", rarity: "프리즘", aliases: ["파멸의 저주"],
         tag: "스킬 적중 → 적응형 능력치",
@@ -493,6 +180,12 @@
         tag: "CC·이동 불가 → 방어력·마저",
         summary: "적 챔피언을 이동 불가 상태로 만들거나 이동 스킬을 사용할 수 없게(고정) 하면 영구적인 저주받은 힘을 얻고, 저주받은 힘에 비례해 방어력과 마법 저항력을 획득합니다.",
         details: ["CC기가 많은 탱커·서포터·브루저가 실버 등급에서 가장 가성비 좋게 저주 스택과 탱킹력을 챙기는 핵심 파츠"]
+      },
+      "침탈": {
+        type: "augment", rarity: "실버",
+        tag: "돌진·순간이동 → 이동 속도",
+        summary: "주변에 적이 있을 때 돌진하거나 순간이동하면 저주받은 힘을 얻고, 저주받은 힘에 비례해 이동 속도가 증가합니다.",
+        details: ["돌진기·순간이동기가 잦은 챔피언이 초반부터 저주 스택과 기동력을 함께 챙길 수 있는 실버 파츠"]
       },
 
       // --- 모자장수 플랜 ---
@@ -528,7 +221,7 @@
       "번개 막대": {
         type: "item", rarity: "프리즘", itemId: 447119,
         tag: "필수 프리즘 ①",
-        stats: "스킬 가속 · 보호막 · 자동 사용 가속",
+        stats: "체력 +500 · 방어력 +30 · 마법 저항력 +30 · 스킬 가속 +20",
         summary: "보유한 모든 자동 사용 증강의 재사용 대기시간(발동 시간)에 스킬 가속이 적용됩니다.",
         details: [
           "증강 알고리즘 보정: 보유 시 이후 증강 선택 단계에서 자동 사용 증강 등장 확률이 상승",
@@ -599,9 +292,9 @@
 
       // --- 자동화 플랜: 충전 스택 가속 파츠 ---
       "질책": {
-        type: "item", rarity: "프리즘", itemId: 447107,
+        type: "item", rarity: "프리즘", itemId: 443055,
         tag: "충전 가속 프리즘",
-        stats: "충전 상태 극대화 · 이동/공격 시너지",
+        stats: "공격력 +55 · 공격 속도 +45% · 이동 속도 +15%",
         summary: "충전 상태 효과를 강화하고 연쇄 발동을 돕는 프리즘 아이템입니다.",
         details: ["마공화살 동료·룬 조각기와 함께 충전 스택 회전율을 압도적으로 끌어올림"]
       },
@@ -649,7 +342,7 @@
         ]
       },
       "킨코우 십수": {
-        type: "item", rarity: "프리즘", itemId: 447118, aliases: ["킨코우 살수"],
+        type: "item", rarity: "프리즘", itemId: 447116, aliases: ["킨코우 살수"],
         tag: "검무 핵심 시너지",
         stats: "공격력 · 물리 관통력 · 이동 속도",
         summary: "적 주변에 급소(약점)를 표시하고, 급소 방향에서 타격 시 최대 체력 비례 추가 고정 피해와 이동 속도를 얻습니다.",
@@ -713,24 +406,25 @@
         title: "저주 증강 플랜",
         subtitle: "팀원 시너지로 라운드당 스택 상한을 끌어올리는 후반 왕귀형",
         accent: "from-purple-500/20 to-fuchsia-500/5 border-purple-400/40",
-        badges: ["팀 시너지 핵심", "초반 스택 누적", "후반 왕귀"],
+        badges: ["저주 증강 6종", "팀 시너지 핵심", "초반 스택 누적"],
         sections: [
           {
-            heading: "저주 증강 전체 목록 5종 (스택 조건 & 보상 능력치)",
-            entities: ["파멸의 예언자", "공포를 부르는 자", "어둠의 축복", "죽음의 손길", "신성 모독자"],
+            heading: "저주 증강 전체 목록 6종 (스택 조건 & 보상 능력치)",
+            entities: ["파멸의 예언자", "공포를 부르는 자", "어둠의 축복", "죽음의 손길", "신성 모독자", "침탈"],
             bullets: [
-              "파멸의 예언자 (프리즘): 스킬 적중 시 스택 → 적응형 능력치 획득",
-              "공포를 부르는 자 (프리즘): 주변 적 오라로 지속 스택 → 최대 체력 획득",
+              "파멸의 예언자 (프리즘): 적 챔피언에게 스킬 적중 시 스택 → 적응형 능력치 획득",
+              "공포를 부르는 자 (프리즘): 주변 오라로 지속 스택 → 최대 체력 획득",
               "어둠의 축복 (골드): 회복·보호막 부여 시 스택 → 스킬 가속 획득",
               "죽음의 손길 (골드): 적 챔피언 기본 공격 적중 시 스택 → 적중 시 추가 마법 피해 획득",
-              "신성 모독자 (실버): 적 이동 불가(CC) 적중 시 스택 → 방어력·마법 저항력 획득"
+              "신성 모독자 (실버): 적 이동 불가(CC) 적중 시 스택 → 방어력·마법 저항력 획득",
+              "침탈 (실버): 주변 적 존재 시 돌진·순간이동 시 스택 → 이동 속도 획득"
             ]
           },
           {
-            heading: "파멸의 예언자(파멸의 저주) 선택 타이밍",
+            heading: "라운드당 스택 상한 & 파멸의 예언자 선택 타이밍",
             bullets: [
-              "1번째 증강 (비추천): 초반에 단독으로 집으면 스택을 쌓기 까다로워 되도록 피하는 것이 좋습니다.",
-              "중·후반 증강 (고효율): 이미 다른 저주 증강으로 스택이 쌓여 있는 중·후반에 확보하면 효율이 매우 뛰어납니다."
+              "라운드당 기본 저주 스택 상한은 50이며, 본인과 팀원이 보유한 저주 증강 1개당 상한이 +10씩 증가합니다.",
+              "파멸의 예언자(파멸의 저주)는 1번째 증강으로 단독 선택 시 스택 누적이 까다로우므로 비추천하며, 이미 스택이 쌓인 중·후반에 집는 것이 훨씬 좋습니다."
             ]
           }
         ]
@@ -749,13 +443,13 @@
             entities: ["퀘스트: 미치광이 모자장수", "해트트릭", "주스 압착기"],
             bullets: [
               "모자장수 플랜은 반드시 「해트트릭」과 「퀘스트: 미치광이 모자장수」 증강을 함께 먹어야 완성됩니다.",
-              "해트트릭을 보유하면 라운드 패배 시에도 모자를 잃지 않아 퀘스트 완료 후 모자 개수를 안정적으로 유지할 수 있습니다.",
-              "상점에서 모자(카파 주스)를 훨씬 저렴한 가격에 구매할 수 있어 빠르게 모자를 쌓을 수 있습니다."
+              "해트트릭을 먹으면 라운드 패배 시에도 모자를 잃지 않아 퀘스트 완료 후 모자 개수를 안정적으로 유지할 수 있고, 상점에서 모자를 훨씬 저렴하게 살 수 있습니다.",
+              "주스 압착기를 함께 챙기면 팀원 시너지 및 할인·추가 모자 효과로 모자 수급 속도가 빨라집니다."
             ]
           },
           {
             heading: "골드 낭비 주의 (상한 40개)",
-            warning: "모자 능력치는 최대 40개까지만 적용됩니다! 40개를 초과해서 구매해도 스탯은 오르지 않고 골드만 빠져나가므로, 40개를 채운 뒤에는 모자 구매를 멈추고 아이템·모루에 투자하세요."
+            warning: "모자는 최대 40개까지만 적용됩니다! 40개를 초과해서 사면 스탯은 오르지 않고 골드만 빠져나가므로, 40개 달성 이후에는 모자 구매를 멈추세요."
           }
         ]
       },
@@ -772,9 +466,9 @@
             heading: "필수 프리즘 아이템 3종",
             entities: ["번개 막대", "마공화살 동료", "룬 조각기"],
             bullets: [
-              "번개 막대: 자동 사용 발동 시간에 스킬 가속이 적용되며, 보유 시 증강 선택 알고리즘을 타서 자동 사용 증강 등장 확률이 올라갑니다.",
-              "마공화살 동료 (필수): 충전 상태 공격 시 보유한 자동 사용 효과가 즉시 발동되어 자동화 플랜의 핵심 엔진이 됩니다.",
-              "룬 조각기: 스킬 적중만으로 충전 상태를 쌓고 발동시켜, 마공화살 동료와 결합하면 평타 없이 스킬만 맞춰도 자동 사용이 끊임없이 연쇄됩니다. (도트·짧은 쿨 스킬 최적화)"
+              "번개 막대: 자동 사용 발동 시간에 스킬 가속이 적용되며, 먹으면 증강 선택 단계에서 알고리즘을 타서 자동 사용 증강이 뜰 확률이 올라갑니다.",
+              "마공화살 동료 (필수): 충전 상태 공격 시 자동 사용이 즉시 발동되는 효과를 가지고 있어 자동화 플랜에서 필수입니다.",
+              "룬 조각기: 스킬 피해로 충전 상태를 쌓고 발동시켜 마공화살 동료와 결합하면 평타 없이 스킬만 맞춰도 자동 사용이 연쇄 발동합니다. (도트·짧은 쿨 스킬 효율 우수)"
             ]
           },
           {
@@ -782,30 +476,30 @@
             entities: ["양자 연산", "야생 불꽃"],
             bullets: [
               "양자 연산 (물리 관통력 적용): 3레벨 달성 시 모든 자동 사용 효과가 25% / 10% / 1% 확률로 최대 4회 다중 발동합니다.",
-              "야생 불꽃 (마법 관통력 적용): 3레벨 달성 시 시전할 때마다 최대 튕김 횟수가 +1씩 무한 증가하며, 스킬 피해 판정으로 룬 조각기를 발동시켜 무한 루프의 중심이 됩니다."
+              "야생 불꽃 (마법 관통력 적용): 3레벨 달성 시 시전할 때마다 최대 튕김 횟수가 +1씩 증가하며, 스킬 피해 판정으로 룬 조각기를 발동시켜 무한 루프의 핵심이 됩니다."
             ]
           },
           {
             heading: "추천 보조 자동 사용 증강",
             entities: ["신성한 중재", "늘어나는 팔", "점액 천지"],
             bullets: [
-              "신성한 중재: 자동 무적 시전으로 예열 시간 확보 및 3v3 한타 변수 창출",
-              "늘어나는 팔 (로켓 팔): 적을 강제로 사거리 안으로 끌어와 자동 사용 딜링을 끊김 없이 적중",
-              "점액 천지: 실버 등급이면서도 스킬 피해 판정으로 룬 조각기를 발동시키는 가성비 핵심 파츠"
+              "신성한 중재: 자동 무적 시전으로 예열 시간 확보 및 3v3 변수 창출",
+              "늘어나는 팔 (로켓 팔): 적을 끌어와 자동 사용 딜링을 끊김 없이 적중",
+              "점액 천지: 실버 등급이면서도 룬 조각기를 발동시키는 가성비 파츠"
             ]
           },
           {
-            heading: "충전 스택 가속 파츠 (무한 루프 가속)",
+            heading: "충전 스택 가속 파츠 (아이템 · 증강)",
             entities: ["질책", "벼락폭풍검", "스태틱의 단검", "불여우", "에너지 충전"],
             bullets: [
               "아이템: 질책(프리즘), 벼락폭풍검(벼폭검), 스태틱의 단검(스태틱)으로 충전 스택 회전율 극대화",
-              "증강: 불여우(여우불)와 에너지 충전은 충전 스택 수급 효율이 압도적으로 뛰어납니다."
+              "증강: 불여우(여우불)와 에너지 충전이 압도적인 충전 효율을 보여줍니다."
             ]
           },
           {
-            heading: "⚠️ 주의점 & 각 보는 타이밍",
+            heading: "주의점 & 각 보는 타이밍",
             entities: ["감바 모루"],
-            warning: "프리즘 아이템 3개가 필수라 골드가 매우 많이 필요합니다. 이블린·오른 등 고점을 볼 수 있는 조우자나 「감바 모루」를 먹었을 때 노리는 것이 좋으며, 조건 없이 무지성으로 진입하면 파츠가 모이기 전에 일찍 탈락할 확률이 높습니다. (저점은 낮지만 완성 시 고점은 최상급)"
+            warning: "프리즘 아이템 3개가 필수라 돈이 많이 필요하므로, 이블린·오른 등 고점을 볼 수 있는 조우자나 감바 모루를 먹었을 때 하는 게 좋습니다. 무지성으로 하면 일찍 탈락할 확률이 높습니다. (저점은 낮지만 고점은 높음)"
           }
         ]
       },
@@ -822,9 +516,9 @@
             heading: "핵심 3종 증강 & 추천 프리즘 아이템",
             entities: ["검무", "킨코우 십수", "대지의 각성", "소환사 혁명"],
             bullets: [
-              "검무 (물리 관통력 적용): 지정 불가 상태로 적 사이를 순간이동하며 연속 타격합니다. 프리즘 아이템 「킨코우 십수(킨코우 살수)」와 함께 쓰면 약점 타격이 연쇄 발동해 효율이 매우 뛰어납니다.",
-              "대지의 각성: 검무 시전 중 발생하는 연속 순간이동마다 이동 경로에 광역 폭발이 연쇄 발동해 압도적인 폭딜을 꽂습니다.",
-              "소환사 혁명: 소환사 주문을 한 번 더 사용할 수 있게 해 주어, 검무 + 대지의 각성 콤보를 라운드 내 2연속으로 터뜨릴 수 있습니다."
+              "검무 (물리 관통력 적용): 지정 불가 상태로 순간이동하며 연속 타격하며, 킨코우 십수(킨코우 살수) 프리즘 아이템과 연계 효율이 매우 좋습니다.",
+              "대지의 각성: 검무 시전 중 연속 순간이동마다 광역 폭발이 연쇄 발동해 강력한 폭딜을 넣습니다.",
+              "소환사 혁명: 소환사 주문을 한 번 더 사용할 수 있게 해 줘 검무 + 대지의 각성 콤보를 2연속으로 터뜨릴 수 있습니다."
             ]
           }
         ]
@@ -842,77 +536,308 @@
             heading: "핵심 증강 & 온힛 스택 가속 파츠",
             entities: ["거인의 결의", "양손잡이", "탄환 세례", "두 배 세 배"],
             bullets: [
-              "거인의 결의는 스택이 쌓이면 기본 스탯뿐만 아니라 공격 사거리까지 증가하므로, 원거리 챔피언이 먹었을 때 안전하게 스택을 쌓기 쉬워 효율이 뛰어납니다.",
-              "스택이 적중 시 효과(온힛)에 따라 빠르게 쌓이므로 「양손잡이」, 「탄환 세례」, 「두 배 세 배」 같은 증강들과 조합하면 스택이 폭발적으로 누적됩니다."
+              "거인의 결의는 스택이 쌓이면 기본 스탯뿐만 아니라 사거리 증가도 되기 때문에 원거리 챔피언이 먹었을 때 스택 쌓기가 쉬워서 좋습니다.",
+              "스택이 적중 시 효과에 따라 빨리 쌓이기 때문에 양손잡이, 탄환 세례, 두 배 세 배 같은 증강들과 시너지가 뛰어납니다."
             ]
           },
           {
             heading: "추천 아이템 빌드 (구인수 + 생존 탱템)",
             entities: ["구인수의 격노검"],
             bullets: [
-              "구인수의 격노검: 적중 시 효과 발동을 극대화해 거인의 결의 스택을 가장 빠르게 끌어올리는 필수 코어입니다.",
-              "생존 탱템: 일정 스택이 쌓이기 전까지 죽지 않고 버티는 것이 핵심이므로, 구인수 이후에는 탱커·생존 아이템을 올려 안정적으로 왕귀하는 빌드가 가장 강력합니다."
+              "아이템은 구인수(구인수의 격노검) + 일정 스택을 쌓기까지 버티기 위한 탱템을 올리는 게 좋습니다."
             ]
           }
         ]
       }
     ];
 
-    function TooltipEntityBadge({ name, ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap }) {
-      const [isOpen, setIsOpen] = useState(false);
-      const wrapRef = useRef(null);
+    // =========================================================================
+    // 3. 애플리케이션 상태 & 헬퍼 함수
+    // =========================================================================
+    const state = {
+      viewMode: "plans",
+      selectedPlanId: "ALL",
+      activeTooltipKey: null,
 
+      rawChampionsData: {},
+      uploadedFileName: "",
+      autoLoadState: "loading",
+      lastSyncedAt: "",
+      toastMsg: null,
+
+      ddVersion: FALLBACK_DD_VERSION,
+      ddChampionsMap: {},
+      ddItemNameMap: {},
+      ddPrismaticItemIdMap: {},
+      cdAugmentMetaMap: {},
+      cdItemIconMap: {},
+      cdPrismaticIconMap: {},
+      ddSyncState: "loading",
+
+      selectedChampKey: "",
+      activeTab: "build",
+      searchQuery: "",
+      roleFilter: "전체",
+      tierFilter: "전체",
+      onlyRealData: true,
+      selectedPatch: "ALL",
+      rarityFilter: "전체",
+      augmentSort: "composite"
+    };
+
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const normalizeAugmentName = (rawName) => {
+      const n = String(rawName || "").trim();
+      return AUGMENT_NAME_CORRECTIONS[n] || n;
+    };
+
+    const normalizeCDragonAsset = (rawPath) => {
+      if (!rawPath) return "";
+      const trimmed = String(rawPath).trim();
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+      let cleaned = trimmed.toLowerCase();
+      if (cleaned.startsWith("/lol-game-data/assets/")) {
+        cleaned = cleaned.slice("/lol-game-data/assets/".length);
+      } else if (cleaned.startsWith("lol-game-data/assets/")) {
+        cleaned = cleaned.slice("lol-game-data/assets/".length);
+      }
+      return CDRAGON_ASSET_PREFIX + cleaned.replace(/^\/+/, "");
+    };
+
+    const calibrateNumericRarityMap = (rawAugs = []) => {
+      const votes = {};
+      const numSet = new Set();
+      rawAugs.forEach((a) => {
+        if (typeof a?.rarity !== "number") return;
+        const code = a.rarity;
+        numSet.add(code);
+        const name = normalizeAugmentName(a.nameTRA || a.name || "");
+        const known = OFFICIAL_AUGMENT_RARITY_KO[name];
+        if (known) {
+          if (!votes[code]) votes[code] = { 실버: 0, 골드: 0, 프리즘: 0 };
+          votes[code][known] += 1;
+        }
+      });
+      const result = {};
+      Object.entries(votes).forEach(([code, counts]) => {
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (best && best[1] > 0) result[Number(code)] = best[0];
+      });
+      const sorted = Array.from(numSet).sort((a, b) => a - b);
+      if (Object.keys(result).length < 3 && sorted.length >= 3) {
+        if (numSet.has(4) && numSet.has(8)) {
+          if (!result[0]) result[0] = "실버";
+          if (!result[1]) result[1] = "실버";
+          if (!result[4]) result[4] = "골드";
+          if (!result[8]) result[8] = "프리즘";
+        } else {
+          if (!result[sorted[0]]) result[sorted[0]] = "실버";
+          if (!result[sorted[1]]) result[sorted[1]] = "골드";
+          if (!result[sorted[2]]) result[sorted[2]] = "프리즘";
+        }
+      }
+      return result;
+    };
+
+    const resolveOfficialRarity = (rawRarity, augName = "", numMap = {}) => {
+      const cleanName = normalizeAugmentName(augName);
+      if (OFFICIAL_AUGMENT_RARITY_KO[cleanName]) return OFFICIAL_AUGMENT_RARITY_KO[cleanName];
+      if (typeof rawRarity === "string") {
+        const lower = rawRarity.trim().toLowerCase();
+        if (lower.includes("prism") || lower.includes("프리즘")) return "프리즘";
+        if (lower.includes("gold") || lower.includes("골드")) return "골드";
+        if (lower.includes("silver") || lower.includes("실버")) return "실버";
+        const asNum = Number(lower);
+        if (Number.isFinite(asNum)) {
+          if (numMap[asNum]) return numMap[asNum];
+          if (asNum === 2 || asNum === 8) return "프리즘";
+          if (asNum === 1 || asNum === 4) return "골드";
+          return "실버";
+        }
+      }
+      if (typeof rawRarity === "number") {
+        if (numMap[rawRarity]) return numMap[rawRarity];
+        if (rawRarity === 2 || rawRarity === 8) return "프리즘";
+        if (rawRarity === 1 || rawRarity === 4) return "골드";
+        return "실버";
+      }
+      return "실버";
+    };
+
+    const getEntityIcons = (name) => {
+      const meta = PLAN_ENTITY_TOOLTIPS[name] || { type: "augment", rarity: "프리즘" };
+      const candidates = [name, ...(meta.aliases || [])];
+      if (meta.type === "item") {
+        const isPrismatic = meta.rarity === "프리즘";
+        let cdIcon = "";
+        let ddId = meta.itemId || null;
+        for (const c of candidates) {
+          if (!cdIcon) {
+            cdIcon = isPrismatic
+              ? (state.cdPrismaticIconMap[c] || state.cdItemIconMap[c] || "")
+              : (state.cdItemIconMap[c] || "");
+          }
+          if (!ddId) {
+            ddId = isPrismatic
+              ? (state.ddPrismaticItemIdMap[c] || state.ddItemNameMap[c] || null)
+              : (state.ddItemNameMap[c] || null);
+          }
+        }
+        const ddIcon = ddId ? DD_ITEM_IMG(ddId, state.ddVersion) : "";
+        return {
+          primary: ddIcon || cdIcon,
+          fallback: ddIcon && cdIcon && ddIcon !== cdIcon ? cdIcon : ""
+        };
+      }
+      let augIcon = "";
+      for (const c of candidates) {
+        const fixed = normalizeAugmentName(c);
+        if (state.cdAugmentMetaMap[fixed]?.icon) {
+          augIcon = state.cdAugmentMetaMap[fixed].icon;
+          break;
+        }
+      }
+      return { primary: augIcon, fallback: "" };
+    };
+
+    const getTierNum = (tier, explicitNum = null) => {
+      if (explicitNum && explicitNum >= 1 && explicitNum <= 4) return explicitNum;
+      if (tier === "S") return 1;
+      if (tier === "A") return 2;
+      if (tier === "B") return 3;
+      if (tier === "C") return 4;
+      return 0;
+    };
+
+    const getTierBadgeMeta = (tierNum) => {
+      if (tierNum === 1) return { label: "1티어", cls: "bg-sky-500/20 text-sky-300 border-sky-400/50", solid: "bg-sky-500 text-slate-950 border-sky-300" };
+      if (tierNum === 2) return { label: "2티어", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-400/50", solid: "bg-emerald-500 text-slate-950 border-emerald-300" };
+      if (tierNum === 3) return { label: "3티어", cls: "bg-amber-500/20 text-amber-300 border-amber-400/45", solid: "bg-amber-500 text-slate-950 border-amber-300" };
+      if (tierNum === 4) return { label: "4티어", cls: "bg-rose-500/15 text-rose-300 border-rose-500/40", solid: "bg-rose-500 text-white border-rose-300" };
+      return { label: "-", cls: "bg-slate-800 text-slate-500 border-slate-700", solid: "bg-slate-700 text-slate-300 border-slate-600" };
+    };
+
+    const getRarityPillCls = (rarity) => {
+      if (rarity === "프리즘") return "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50";
+      if (rarity === "골드") return "bg-amber-500/20 text-amber-200 border-amber-400/50";
+      return "bg-slate-600/30 text-slate-200 border-slate-400/45";
+    };
+
+    const resolveLatestItemIcon = (item, isPrismatic = false) => {
+      const name = String(item?.name || "").trim();
+      const rawId = Number(item?.id || 0);
+      if (isPrismatic) {
+        const prismId = (rawId >= 440000 && rawId < 450000) ? rawId : (state.ddPrismaticItemIdMap[name] || 0);
+        if (prismId) return DD_ITEM_IMG(prismId, state.ddVersion);
+        return state.cdPrismaticIconMap[name] || state.cdItemIconMap[name] || item?.icon || item?.icon_url || "";
+      }
+      const mappedId = (rawId >= 1000 && rawId < 7000) ? rawId : (state.ddItemNameMap[name] || rawId);
+      if (mappedId) return DD_ITEM_IMG(mappedId, state.ddVersion);
+      return state.cdItemIconMap[name] || item?.icon || item?.icon_url || "";
+    };
+
+    const computePatchFilteredSummary = (champ, selectedPatch, allPatchesDesc) => {
+      if (!champ?.hasRealData) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+      const patchStats = champ.patch_stats || {};
+      const patchKeys = Object.keys(patchStats);
+      if (patchKeys.length === 0) {
+        const s = champ.summary || {};
+        const picks = Number(s.picks || 0);
+        const avg = Number(s.avg_placement ?? 3.5);
+        const bp = Number(s.bayes_placement ?? (picks * avg + 25 * 3.5) / (picks + 25));
+        const tier = picks < 20 ? "B" : bp <= 3.32 ? "S" : bp <= 3.46 ? "A" : bp <= 3.6 ? "B" : "C";
+        return {
+          tier,
+          tier_num: getTierNum(tier, s.tier_num ?? s.opgg_tier),
+          picks,
+          avg_placement: Number(avg.toFixed(2)),
+          bayes_placement: Number(bp.toFixed(2)),
+          top3_rate: Number((s.top3_rate ?? 50).toFixed(1)),
+          win_rate: Number((s.win_rate ?? 16.7).toFixed(1)),
+          avg_damage: Math.round(s.avg_damage || 0)
+        };
+      }
+
+      const weightCurve = [1.0, 0.75, 0.5, 0.35, 0.25];
+      const patchWeightMap = {};
+      allPatchesDesc.forEach((p, i) => {
+        patchWeightMap[p] = weightCurve[Math.min(i, weightCurve.length - 1)];
+      });
+
+      const targetKeys = selectedPatch === "ALL" ? patchKeys : patchStats[selectedPatch] ? [selectedPatch] : [];
+      if (targetKeys.length === 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      let rawTotalPicks = 0, weightedPicksSum = 0, weightedPlaceSum = 0, weightedTop3Sum = 0, weightedWinSum = 0, weightedDmgSum = 0;
+      targetKeys.forEach((pKey) => {
+        const st = patchStats[pKey];
+        const n = Number(st.picks || 0);
+        if (n <= 0) return;
+        const w = selectedPatch === "ALL" ? patchWeightMap[pKey] ?? 0.5 : 1.0;
+        const effN = n * w;
+        rawTotalPicks += n;
+        weightedPicksSum += effN;
+        weightedPlaceSum += Number(st.avg_placement || 3.5) * effN;
+        weightedTop3Sum += Number(st.top3_rate || 50) * effN;
+        weightedWinSum += Number(st.win_rate || 16.7) * effN;
+        weightedDmgSum += Number(st.avg_damage || 0) * effN;
+      });
+
+      if (rawTotalPicks === 0 || weightedPicksSum <= 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      const avgPlacement = Number((weightedPlaceSum / weightedPicksSum).toFixed(2));
+      const bayesPlacement = Number(((weightedPicksSum * avgPlacement + 25 * 3.5) / (weightedPicksSum + 25)).toFixed(2));
+      const top3Rate = Number((weightedTop3Sum / weightedPicksSum).toFixed(1));
+      const winRate = Number((weightedWinSum / weightedPicksSum).toFixed(1));
+      const avgDamage = Math.round(weightedDmgSum / weightedPicksSum);
+      const tier = rawTotalPicks < 20 ? "B" : bayesPlacement <= 3.32 ? "S" : bayesPlacement <= 3.46 ? "A" : bayesPlacement <= 3.6 ? "B" : "C";
+
+      return {
+        tier,
+        tier_num: getTierNum(tier, champ.summary?.tier_num ?? champ.summary?.opgg_tier),
+        picks: rawTotalPicks,
+        avg_placement: avgPlacement,
+        bayes_placement: bayesPlacement,
+        top3_rate: top3Rate,
+        win_rate: winRate,
+        avg_damage: avgDamage
+      };
+    };
+
+    const setToast = (type, text) => {
+      state.toastMsg = { type, text };
+      render();
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        state.toastMsg = null;
+        render();
+      }, 4500);
+    };
+
+    // =========================================================================
+    // 4. HTML 렌더링 함수
+    // =========================================================================
+    function renderEntityBadgeHtml(name, uniqueKey) {
       const meta = PLAN_ENTITY_TOOLTIPS[name] || {
         type: "augment",
         rarity: "프리즘",
-        summary: "아레나 3v3 핵심 시너지 파츠입니다.",
+        summary: "아레나 3v3 공용 플랜 시너지 파츠입니다.",
         details: []
       };
-
-      // 외부 클릭 시 모바일 팝업 닫기
-      useEffect(() => {
-        if (!isOpen) return;
-        const handleOutside = (e) => {
-          if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-            setIsOpen(false);
-          }
-        };
-        document.addEventListener("mousedown", handleOutside);
-        document.addEventListener("touchstart", handleOutside);
-        return () => {
-          document.removeEventListener("mousedown", handleOutside);
-          document.removeEventListener("touchstart", handleOutside);
-        };
-      }, [isOpen]);
-
-      // 공식 아이콘 자동 탐색 (이름 + 별칭 + itemId 폴백)
-      const { iconUrl, fallbackUrl } = useMemo(() => {
-        const candidates = [name, ...(meta.aliases || [])];
-        if (meta.type === "item") {
-          let cdIcon = "";
-          let ddId = meta.itemId || null;
-          for (const c of candidates) {
-            if (!cdIcon && cdItemIconMap[c]) cdIcon = cdItemIconMap[c];
-            if (!ddId && ddItemNameMap[c]) ddId = ddItemNameMap[c];
-          }
-          const ddIcon = ddId ? DD_ITEM_IMG(ddId, ddVersion) : "";
-          const isPrismatic = meta.rarity === "프리즘";
-          return {
-            iconUrl: isPrismatic ? (cdIcon || ddIcon) : (ddIcon || cdIcon),
-            fallbackUrl: isPrismatic ? ddIcon : cdIcon
-          };
-        } else {
-          let augIcon = "";
-          for (const c of candidates) {
-            const fixed = normalizeAugmentName(c);
-            if (cdAugmentMetaMap[fixed]?.icon) {
-              augIcon = cdAugmentMetaMap[fixed].icon;
-              break;
-            }
-          }
-          return { iconUrl: augIcon, fallbackUrl: "" };
-        }
-      }, [name, meta, ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap]);
+      const icons = getEntityIcons(name);
+      const isOpen = state.activeTooltipKey === uniqueKey;
 
       const borderTone =
         meta.rarity === "프리즘"
@@ -920,7 +845,7 @@
           : meta.rarity === "골드"
             ? "border-amber-400/50 bg-amber-950/30 hover:border-amber-300"
             : meta.rarity === "전설"
-              ? "border-hextech-cyan/50 bg-cyan-950/30 hover:border-hextech-cyan"
+              ? "border-cyan-400/50 bg-cyan-950/30 hover:border-cyan-300"
               : "border-slate-500/55 bg-slate-800/60 hover:border-slate-300";
 
       const badgeTone =
@@ -929,537 +854,303 @@
           : meta.rarity === "골드"
             ? "bg-amber-500/20 text-amber-200 border-amber-400/50"
             : meta.rarity === "전설"
-              ? "bg-hextech-cyan/20 text-hextech-cyan border-hextech-cyan/45"
+              ? "bg-cyan-500/20 text-cyan-200 border-cyan-400/45"
               : "bg-slate-600/30 text-slate-200 border-slate-400/45";
 
-      return (
-        <div
-          ref={wrapRef}
-          className="relative inline-block"
-          onMouseEnter={() => setIsOpen(true)}
-          onMouseLeave={() => setIsOpen(false)}
-        >
+      const emoji = meta.type === "item" ? "💎" : meta.rarity === "프리즘" ? "💠" : meta.rarity === "골드" ? "🌟" : "🔹";
+
+      return `
+        <div class="relative inline-block" data-tooltip-wrap="${escapeHtml(uniqueKey)}">
           <button
             type="button"
-            onClick={() => setIsOpen(prev => !prev)}
-            className={`group flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl border transition-all text-left shadow-sm ${borderTone}`}
+            data-action="toggle-tooltip"
+            data-tooltip-key="${escapeHtml(uniqueKey)}"
+            class="group flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl border transition-all text-left shadow-sm ${borderTone}"
           >
-            <SafeIcon
-              src={iconUrl}
-              fallbackSrc={fallbackUrl}
-              alt={name}
-              className="w-8 h-8 rounded-lg border border-slate-700/80"
-              emojiFallback={meta.type === "item" ? "💎" : meta.rarity === "프리즘" ? "💠" : meta.rarity === "골드" ? "🌟" : "🔹"}
-            />
-            <div className="leading-tight">
-              <div className="text-xs font-extrabold text-white group-hover:text-hextech-goldLight transition-colors flex items-center gap-1">
-                <span>{name}</span>
-              </div>
-              <div className="text-[10px] text-slate-400 font-semibold">
-                {meta.type === "item" ? `${meta.rarity} 아이템` : `${meta.rarity} 증강`}
-                {meta.tag ? ` · ${meta.tag}` : ""}
-              </div>
+            ${
+              icons.primary
+                ? `<img src="${escapeHtml(icons.primary)}" data-fallback="${escapeHtml(icons.fallback)}" data-emoji="${emoji}" alt="${escapeHtml(name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700/80 object-cover bg-slate-900 shrink-0" onerror="handleImgErr(this)" />`
+                : `<span class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-sm shrink-0">${emoji}</span>`
+            }
+            <div class="leading-tight">
+              <div class="text-xs font-extrabold text-white group-hover:text-hextech-goldLight transition-colors">${escapeHtml(name)}</div>
+              <div class="text-[10px] text-slate-400 font-semibold">${escapeHtml(meta.rarity)} ${meta.type === "item" ? "아이템" : "증강"}${meta.tag ? ` · ${escapeHtml(meta.tag)}` : ""}</div>
             </div>
           </button>
 
-          {isOpen && (
-            <div
-              role="tooltip"
-              className="tooltip-pop absolute z-50 left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-full mb-2.5 w-[290px] sm:w-[340px] max-w-[88vw] rounded-2xl bg-slate-950/98 border border-hextech-gold/55 shadow-2xl p-4 backdrop-blur-xl pointer-events-auto"
-            >
-              <div className="flex items-start gap-3 pb-2.5 border-b border-slate-800">
-                <SafeIcon
-                  src={iconUrl}
-                  fallbackSrc={fallbackUrl}
-                  alt={name}
-                  className="w-11 h-11 rounded-xl border border-hextech-gold/50 shrink-0"
-                  emojiFallback={meta.type === "item" ? "💎" : "✨"}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-black text-white">{name}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${badgeTone}`}>
-                      {meta.rarity} {meta.type === "item" ? "아이템" : "증강"}
-                    </span>
+          ${
+            isOpen
+              ? `
+                <div role="tooltip" class="tooltip-pop fixed sm:absolute z-50 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 bottom-4 sm:bottom-full sm:mb-2.5 sm:w-[340px] rounded-2xl bg-slate-950/98 border border-hextech-gold/60 shadow-2xl p-4 backdrop-blur-xl">
+                  <div class="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800">
+                    <div class="flex items-start gap-3 min-w-0">
+                      ${
+                        icons.primary
+                          ? `<img src="${escapeHtml(icons.primary)}" data-fallback="${escapeHtml(icons.fallback)}" data-emoji="${emoji}" alt="${escapeHtml(name)}" class="w-11 h-11 rounded-xl border border-hextech-gold/50 object-cover bg-slate-900 shrink-0" onerror="handleImgErr(this)" />`
+                          : `<span class="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-lg shrink-0">${emoji}</span>`
+                      }
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="text-sm font-black text-white">${escapeHtml(name)}</span>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold border ${badgeTone}">${escapeHtml(meta.rarity)} ${meta.type === "item" ? "아이템" : "증강"}</span>
+                        </div>
+                        ${meta.stats ? `<div class="text-[11px] font-semibold text-hextech-cyan mt-1">${escapeHtml(meta.stats)}</div>` : ""}
+                        ${!meta.stats && meta.tag ? `<div class="text-[11px] font-semibold text-hextech-goldLight mt-1">${escapeHtml(meta.tag)}</div>` : ""}
+                      </div>
+                    </div>
+                    <button type="button" data-action="close-tooltip" class="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5">✕</button>
                   </div>
-                  {meta.stats && (
-                    <div className="text-[11px] font-semibold text-hextech-cyan mt-1">{meta.stats}</div>
-                  )}
-                  {meta.tag && !meta.stats && (
-                    <div className="text-[11px] font-semibold text-hextech-goldLight mt-1">{meta.tag}</div>
-                  )}
+                  <div class="pt-2.5 space-y-2 text-xs leading-relaxed text-slate-200">
+                    <p>${escapeHtml(meta.summary)}</p>
+                    ${
+                      meta.details && meta.details.length > 0
+                        ? `<ul class="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                            ${meta.details
+                              .map(
+                                (line) =>
+                                  `<li class="flex items-start gap-1.5 text-[11px] text-slate-300"><span class="text-hextech-gold mt-0.5 shrink-0">▸</span><span>${escapeHtml(line)}</span></li>`
+                              )
+                              .join("")}
+                          </ul>`
+                        : ""
+                    }
+                  </div>
                 </div>
-              </div>
-
-              <div className="pt-2.5 space-y-2 text-xs leading-relaxed text-slate-200">
-                <p>{meta.summary}</p>
-                {meta.details && meta.details.length > 0 && (
-                  <ul className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
-                    {meta.details.map((line, idx) => (
-                      <li key={idx} className="flex items-start gap-1.5 text-[11px] text-slate-300">
-                        <span className="text-hextech-gold mt-0.5 shrink-0">▸</span>
-                        <span>{line}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
+              `
+              : ""
+          }
         </div>
-      );
+      `;
     }
 
-    function CommonPlansView({ ddVersion, ddItemNameMap, cdItemIconMap, cdAugmentMetaMap, onBackToAnalytics }) {
-      const [selectedPlanId, setSelectedPlanId] = useState("ALL");
+    function renderCommonPlansHtml() {
+      const visiblePlans =
+        state.selectedPlanId === "ALL"
+          ? COMMON_WIN_PLANS
+          : COMMON_WIN_PLANS.filter((p) => p.id === state.selectedPlanId);
 
-      const visiblePlans = useMemo(() => {
-        if (selectedPlanId === "ALL") return COMMON_WIN_PLANS;
-        return COMMON_WIN_PLANS.filter(p => p.id === selectedPlanId);
-      }, [selectedPlanId]);
-
-      return (
-        <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-          {/* 상단 배너 */}
-          <div className="hextech-card p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-hextech-gold/20 text-hextech-goldLight border border-hextech-gold/45">
+      return `
+        <main class="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+          <div class="hextech-card p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-hextech-gold/20 text-hextech-goldLight border border-hextech-gold/45">
                   🏆 3v3 아레나 공용 1등 플랜
                 </span>
-                <span className="text-xs text-slate-400">
-                  아이콘에 마우스를 올리면(모바일은 터치) 상세 툴팁과 시너지 팁이 표시됩니다
+                <span class="text-xs text-slate-400">
+                  아이콘에 마우스를 올리거나 클릭/탭하면 상세 툴팁이 표시됩니다
                 </span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 모든 챔피언 공용 1등 승리 플랜 (5종)
               </h2>
-              <p className="text-xs sm:text-sm text-slate-400">
-                챔피언 개별 빌드와 별개로, 증강·프리즘 아이템 조합만으로 게임을 뒤집고 1등을 노릴 수 있는 핵심 승리 공식입니다.
+              <p class="text-xs sm:text-sm text-slate-400">
+                저주 증강 6종 · 모자장수(해트트릭+퀘스트+40개 상한) · 자동화 무한 루프 · 검무+대지의 각성+소환사 혁명 · 거인의 결의
               </p>
             </div>
             <button
-              onClick={onBackToAnalytics}
-              className="shrink-0 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-hextech-cyan/60 text-xs font-bold text-slate-200 transition-all self-start md:self-center"
+              type="button"
+              data-action="switch-view"
+              data-view="analytics"
+              class="shrink-0 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-hextech-cyan/60 text-xs font-bold text-slate-200 transition-all self-start md:self-center"
             >
-              📊 챔피언 실측 분석으로 돌아가기
+              📊 챔피언 실측 분석으로 이동
             </button>
           </div>
 
-          {/* 플랜 빠른 필터 바 */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => setSelectedPlanId("ALL")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
-                selectedPlanId === "ALL"
-                  ? "bg-hextech-gold text-hextech-bg border-hextech-gold shadow-lg"
+              type="button"
+              data-action="select-plan"
+              data-plan-id="ALL"
+              class="px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                state.selectedPlanId === "ALL"
+                  ? "bg-amber-400 text-slate-950 border-amber-300 shadow-lg"
                   : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
-              }`}
+              }"
             >
-              전체 플랜 ({COMMON_WIN_PLANS.length})
+              전체 플랜 (${COMMON_WIN_PLANS.length})
             </button>
-            {COMMON_WIN_PLANS.map(plan => (
-              <button
-                key={plan.id}
-                onClick={() => setSelectedPlanId(plan.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
-                  selectedPlanId === plan.id
-                    ? "bg-hextech-cyan text-slate-950 border-hextech-cyan shadow-lg"
-                    : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
-                }`}
-              >
-                <span>{plan.icon}</span>
-                <span>{plan.num}. {plan.title.replace(" 플랜", "")}</span>
-              </button>
-            ))}
+            ${COMMON_WIN_PLANS.map(
+              (plan) => `
+                <button
+                  type="button"
+                  data-action="select-plan"
+                  data-plan-id="${plan.id}"
+                  class="px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                    state.selectedPlanId === plan.id
+                      ? "bg-teal-400 text-slate-950 border-teal-300 shadow-lg"
+                      : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
+                  }"
+                >
+                  <span>${plan.icon}</span>
+                  <span>${plan.num}. ${escapeHtml(plan.title.replace(" 플랜", ""))}</span>
+                </button>
+              `
+            ).join("")}
           </div>
 
-          {/* 플랜 카드 리스트 */}
-          <div className="space-y-6">
-            {visiblePlans.map(plan => (
-              <article
-                key={plan.id}
-                className={`hextech-card rounded-3xl border bg-gradient-to-br ${plan.accent} p-5 sm:p-7 space-y-5`}
-              >
-                {/* 카드 헤더 */}
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-800/80">
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-950/80 border border-slate-700/80 flex items-center justify-center text-2xl shrink-0 shadow-inner">
-                      {plan.icon}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-black tracking-wider text-hextech-gold">PLAN {plan.num}</span>
-                        <h3 className="text-xl sm:text-2xl font-black text-white">{plan.title}</h3>
+          <div class="space-y-6">
+            ${visiblePlans
+              .map(
+                (plan) => `
+                  <article class="hextech-card rounded-3xl border bg-gradient-to-br ${plan.accent} p-5 sm:p-7 space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-800/80">
+                      <div class="flex items-start gap-3.5">
+                        <div class="w-12 h-12 rounded-2xl bg-slate-950/80 border border-slate-700/80 flex items-center justify-center text-2xl shrink-0">
+                          ${plan.icon}
+                        </div>
+                        <div>
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs font-black tracking-wider text-hextech-gold">PLAN ${plan.num}</span>
+                            <h3 class="text-xl sm:text-2xl font-black text-white">${escapeHtml(plan.title)}</h3>
+                          </div>
+                          <p class="text-xs sm:text-sm text-slate-300 mt-1">${escapeHtml(plan.subtitle)}</p>
+                        </div>
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-300 mt-1">{plan.subtitle}</p>
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        ${plan.badges
+                          .map(
+                            (b) =>
+                              `<span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-950/75 text-slate-200 border border-slate-700/80">${escapeHtml(b)}</span>`
+                          )
+                          .join("")}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {plan.badges.map((b, i) => (
-                      <span
-                        key={i}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-950/75 text-slate-200 border border-slate-700/80"
-                      >
-                        {b}
-                      </span>
-                    ))}
-                  </div>
-                </div>
 
-                {/* 섹션별 상세 내용 */}
-                <div className="grid grid-cols-1 gap-4">
-                  {plan.sections.map((sec, sIdx) => (
-                    <div
-                      key={sIdx}
-                      className="bg-slate-950/60 border border-slate-800/85 rounded-2xl p-4 sm:p-5 space-y-3.5"
-                    >
-                      <h4 className="text-sm font-extrabold text-hextech-goldLight flex items-center gap-2">
-                        <span className="w-1.5 h-4 rounded-full bg-hextech-cyan inline-block"></span>
-                        <span>{sec.heading}</span>
-                      </h4>
-
-                      {/* 아이콘 + 마우스 오버 툴팁 칩 영역 */}
-                      {sec.entities && sec.entities.length > 0 && (
-                        <div className="flex flex-wrap gap-2.5 pt-0.5">
-                          {sec.entities.map(entityName => (
-                            <TooltipEntityBadge
-                              key={entityName}
-                              name={entityName}
-                              ddVersion={ddVersion}
-                              ddItemNameMap={ddItemNameMap}
-                              cdItemIconMap={cdItemIconMap}
-                              cdAugmentMetaMap={cdAugmentMetaMap}
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* 설명 불릿 리스트 */}
-                      {sec.bullets && sec.bullets.length > 0 && (
-                        <ul className="space-y-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
-                          {sec.bullets.map((b, bIdx) => (
-                            <li key={bIdx} className="flex items-start gap-2">
-                              <span className="text-hextech-cyan mt-1 shrink-0 text-[10px]">●</span>
-                              <span>{b}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {/* 주의사항 강조 박스 */}
-                      {sec.warning && (
-                        <div className="rounded-xl bg-rose-950/45 border border-rose-500/45 px-4 py-3 text-xs sm:text-[13px] text-rose-100 leading-relaxed flex items-start gap-2.5">
-                          <span className="text-base shrink-0">⚠️</span>
-                          <span>{sec.warning}</span>
-                        </div>
-                      )}
+                    <div class="grid grid-cols-1 gap-4">
+                      ${plan.sections
+                        .map(
+                          (sec, sIdx) => `
+                            <div class="bg-slate-950/60 border border-slate-800/85 rounded-2xl p-4 sm:p-5 space-y-3.5">
+                              <h4 class="text-sm font-extrabold text-hextech-goldLight flex items-center gap-2">
+                                <span class="w-1.5 h-4 rounded-full bg-hextech-cyan inline-block"></span>
+                                <span>${escapeHtml(sec.heading)}</span>
+                              </h4>
+                              ${
+                                sec.entities && sec.entities.length > 0
+                                  ? `<div class="flex flex-wrap gap-2.5 pt-0.5">${sec.entities
+                                      .map((entityName) => renderEntityBadgeHtml(entityName, `${plan.id}__${sIdx}__${entityName}`))
+                                      .join("")}</div>`
+                                  : ""
+                              }
+                              ${
+                                sec.bullets && sec.bullets.length > 0
+                                  ? `<ul class="space-y-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                                      ${sec.bullets
+                                        .map(
+                                          (b) =>
+                                            `<li class="flex items-start gap-2"><span class="text-hextech-cyan mt-1 shrink-0 text-[10px]">●</span><span>${escapeHtml(b)}</span></li>`
+                                        )
+                                        .join("")}
+                                    </ul>`
+                                  : ""
+                              }
+                              ${
+                                sec.warning
+                                  ? `<div class="rounded-xl bg-rose-950/45 border border-rose-500/45 px-4 py-3 text-xs sm:text-[13px] text-rose-100 leading-relaxed flex items-start gap-2.5">
+                                      <span class="text-base shrink-0">⚠️</span>
+                                      <span>${escapeHtml(sec.warning)}</span>
+                                    </div>`
+                                  : ""
+                              }
+                            </div>
+                          `
+                        )
+                        .join("")}
                     </div>
-                  ))}
-                </div>
-              </article>
-            ))}
+                  </article>
+                `
+              )
+              .join("")}
           </div>
         </main>
-      );
+      `;
     }
 
-    // =========================================================================
-    // 3. 메인 애플리케이션 (외부 통계 하드코딩 0%, 업로드된 JSON 실측 전용)
-    // =========================================================================
+    function renderAnalyticsHtml() {
+      const hasUploadedData = Object.keys(state.rawChampionsData).length > 0;
+      if (!hasUploadedData) {
+        return `
+          <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-12 flex items-center justify-center">
+            <div class="hextech-card p-8 sm:p-12 rounded-3xl text-center space-y-6 w-full">
+              <div class="w-16 h-16 mx-auto rounded-2xl bg-hextech-gold/15 border border-hextech-gold/40 flex items-center justify-center text-3xl">📊</div>
+              <div class="space-y-2">
+                <h2 class="text-2xl font-black text-white">수집한 아레나 3v3 JSON을 올려주세요</h2>
+                <p class="text-sm text-slate-400 leading-relaxed max-w-xl mx-auto">
+                  외부 사이트의 임의 통계는 전혀 포함되어 있지 않습니다. <br/>
+                  <code class="text-hextech-cyan bg-slate-900 px-1.5 py-0.5 rounded">arena_3v3_guide_all_champs.json</code> 파일을 불러오면 실측 통계가 표시됩니다.
+                </p>
+              </div>
+              <div data-action="trigger-upload" class="border-2 border-dashed border-slate-700 hover:border-hextech-cyan bg-slate-950/60 hover:bg-slate-900/80 transition-all rounded-2xl p-8 cursor-pointer space-y-3">
+                <div class="text-4xl">📂</div>
+                <div class="text-base font-extrabold text-white">클릭하거나 JSON 파일을 여기로 드래그하세요</div>
+                <div class="text-xs text-slate-500">지원 파일: arena_3v3_guide_all_champs.json</div>
+              </div>
+              <div>
+                <button type="button" data-action="switch-view" data-view="plans" class="px-5 py-2.5 rounded-xl bg-hextech-gold/15 hover:bg-hextech-gold/25 border border-hextech-gold/50 text-sm font-extrabold text-hextech-goldLight transition-all">
+                  🏆 공용 1등 플랜 5종 보기 →
+                </button>
+              </div>
+            </div>
+          </main>
+        `;
+      }
 
-    function ArenaGuideApp() {
-      const [rawChampionsData, setRawChampionsData] = useState({});
-      const [uploadedFileName, setUploadedFileName] = useState("");
-      const [autoLoadState, setAutoLoadState] = useState("loading"); // loading | loaded | none
-      const [lastSyncedAt, setLastSyncedAt] = useState("");
-      const [toastMsg, setToastMsg] = useState(null);
+      const patchSet = new Set();
+      Object.values(state.rawChampionsData).forEach((c) => Object.keys(c?.patch_stats || {}).forEach((p) => patchSet.add(p)));
+      const availablePatches = Array.from(patchSet).sort((a, b) => {
+        const [am, an] = a.split(".").map(Number);
+        const [bm, bn] = b.split(".").map(Number);
+        return bm !== am ? bm - am : bn - an;
+      });
 
-      // Riot 공식 메타데이터 (명칭·등급·아이콘만 동기화)
-      const [ddVersion, setDdVersion] = useState(FALLBACK_DD_VERSION);
-      const [ddChampionsMap, setDdChampionsMap] = useState({});
-      const [ddItemNameMap, setDdItemNameMap] = useState({});
-      const [cdAugmentMetaMap, setCdAugmentMetaMap] = useState({});
-      const [cdItemIconMap, setCdItemIconMap] = useState({});
-      const [ddSyncState, setDdSyncState] = useState("loading");
-
-      // UI 상태
-      const [viewMode, setViewMode] = useState("analytics"); // analytics | plans
-      const [selectedChampKey, setSelectedChampKey] = useState("");
-      const [activeTab, setActiveTab] = useState("build");
-      const [searchQuery, setSearchQuery] = useState("");
-      const [roleFilter, setRoleFilter] = useState("전체");
-      const [tierFilter, setTierFilter] = useState("전체");
-      const [onlyRealData, setOnlyRealData] = useState(false);
-      const [selectedPatch, setSelectedPatch] = useState("ALL");
-      const [rarityFilter, setRarityFilter] = useState("전체");
-      const [augmentSort, setAugmentSort] = useState("composite");
-      const [isDragging, setIsDragging] = useState(false);
-
-      const fileInputRef = useRef(null);
-      const detailTopRef = useRef(null);
-
-      const hasUploadedData = Object.keys(rawChampionsData).length > 0;
-
-      const showToast = (type, text) => setToastMsg({ type, text });
-
-      useEffect(() => {
-        if (!toastMsg) return;
-        const timer = setTimeout(() => setToastMsg(null), 5000);
-        return () => clearTimeout(timer);
-      }, [toastMsg]);
-
-      // Riot Data Dragon + cherry-augments.json (1순위) + cdragon/arena (2순위) 동기화
-      useEffect(() => {
-        let cancelled = false;
-        const syncMetadata = async () => {
-          try {
-            const verRes = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
-            if (!verRes.ok) throw new Error("versions fetch failed");
-            const versions = await verRes.json();
-            const latestVer = versions?.[0] || FALLBACK_DD_VERSION;
-
-            const [champRes, itemRes, cherryRes, arenaRes] = await Promise.all([
-              fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/champion.json`),
-              fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/item.json`),
-              fetch(CHERRY_AUGMENTS_KO_URL).catch(() => null),
-              fetch(CDRAGON_ARENA_KO_URL).catch(() => null)
-            ]);
-
-            if (!champRes.ok || !itemRes.ok) throw new Error("ddragon fetch failed");
-            const [champJson, itemJson] = await Promise.all([champRes.json(), itemRes.json()]);
-
-            const augMetaMap = {};
-            const cdItemIcons = {};
-
-            if (cherryRes && cherryRes.ok) {
-              try {
-                const cherryList = await cherryRes.json();
-                if (Array.isArray(cherryList)) {
-                  const cherryNumMap = calibrateNumericRarityMap(cherryList);
-                  cherryList.forEach(aug => {
-                    const name = normalizeAugmentName(aug?.nameTRA || aug?.name || "");
-                    if (!name || name === "???") return;
-                    augMetaMap[name] = {
-                      id: Number(aug.id || 0),
-                      rarity: resolveOfficialRarity(aug.rarity, name, cherryNumMap),
-                      icon: normalizeCDragonAsset(aug.augmentSmallIconPath || aug.augmentLargeIconPath || "")
-                    };
-                  });
-                }
-              } catch (_) {}
-            }
-
-            if (arenaRes && arenaRes.ok) {
-              try {
-                const arenaJson = await arenaRes.json();
-                const rawAugs = arenaJson?.augments || [];
-                const numRarityMap = calibrateNumericRarityMap(rawAugs);
-
-                rawAugs.forEach(aug => {
-                  const name = normalizeAugmentName(aug?.name || "");
-                  if (!name || name === "???") return;
-                  const icon = normalizeCDragonAsset(aug.iconSmall || aug.iconLarge || "");
-                  if (augMetaMap[name]) {
-                    if (!augMetaMap[name].icon && icon) augMetaMap[name].icon = icon;
-                    return;
-                  }
-                  augMetaMap[name] = {
-                    id: Number(aug.id || 0),
-                    rarity: resolveOfficialRarity(aug.rarity, name, numRarityMap),
-                    icon
-                  };
-                });
-
-                (arenaJson?.items || []).forEach(it => {
-                  const iname = String(it?.name || "").trim();
-                  const iconUrl = normalizeCDragonAsset(it?.iconPath || "");
-                  if (iname && iconUrl) cdItemIcons[iname] = iconUrl;
-                });
-              } catch (_) {}
-            }
-
-            if (cancelled) return;
-
-            const getItemPriority = (idStr) => {
-              const id = Number(idStr);
-              if (id >= 1000 && id < 7000) return 3;
-              if ((id >= 220000 && id < 230000) || (id >= 440000 && id < 450000)) return 2;
-              return 1;
-            };
-
-            const itemNameMap = {};
-            const itemPriorityMap = {};
-            Object.entries(itemJson.data || {}).forEach(([idStr, info]) => {
-              const itemName = String(info?.name || "").trim();
-              if (!itemName) return;
-              const prio = getItemPriority(idStr);
-              if (!itemNameMap[itemName] || prio > (itemPriorityMap[itemName] || 0)) {
-                itemNameMap[itemName] = Number(idStr);
-                itemPriorityMap[itemName] = prio;
-              }
-            });
-
-            setDdVersion(latestVer);
-            setDdChampionsMap(champJson.data || {});
-            setDdItemNameMap(itemNameMap);
-            setCdAugmentMetaMap(augMetaMap);
-            setCdItemIconMap(cdItemIcons);
-            setDdSyncState("ready");
-          } catch (_) {
-            if (!cancelled) setDdSyncState("fallback");
-          }
+      const combined = {};
+      const lowerToCanonical = {};
+      Object.values(state.ddChampionsMap).forEach((ddC) => {
+        lowerToCanonical[ddC.id.toLowerCase()] = ddC.id;
+        combined[ddC.id] = {
+          champion_name: ddC.id,
+          kr_name: ddC.name,
+          roles: ddC.tags || ["Fighter"],
+          hasRealData: false,
+          best_augments: [],
+          best_prismatics: [],
+          core_items: [],
+          best_partners: []
         };
-        syncMetadata();
-        return () => { cancelled = true; };
-      }, []);
+      });
 
-      // 같은 경로의 최신 arena_3v3_guide_all_champs.json 자동 로드 (GitHub Pages 연동용)
-      const fetchHostedGuideJson = async (isManualRefresh = false) => {
-        setAutoLoadState("loading");
-        try {
-          const res = await fetch(`./arena_3v3_guide_all_champs.json?t=${Date.now()}`, {
-            cache: "no-store"
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const parsed = await res.json();
-          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
-            throw new Error("empty json");
-          }
-
-          setRawChampionsData(parsed);
-          setUploadedFileName("arena_3v3_guide_all_champs.json (자동 동기화)");
-          setOnlyRealData(true);
-          setAutoLoadState("loaded");
-
-          const lastMod = res.headers.get("last-modified");
-          if (lastMod) {
-            const d = new Date(lastMod);
-            if (!Number.isNaN(d.getTime())) {
-              setLastSyncedAt(d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }));
-            }
-          }
-
-          const firstBestKey = Object.keys(parsed).sort((a, b) => {
-            const ap = parsed[a]?.summary?.bayes_placement ?? 9;
-            const bp = parsed[b]?.summary?.bayes_placement ?? 9;
-            return ap - bp;
-          })[0];
-          if (firstBestKey && !selectedChampKey) {
-            setSelectedChampKey(firstBestKey);
-          }
-
-          if (isManualRefresh) {
-            showToast("success", `최신 서버 JSON(${Object.keys(parsed).length}명)을 새로 불러왔습니다.`);
-          }
-        } catch (_) {
-          setAutoLoadState("none");
-          if (isManualRefresh) {
-            showToast("info", "자동 호스팅된 JSON을 찾을 수 없습니다. 로컬 JSON 파일을 직접 올려주세요.");
-          }
-        }
-      };
-
-      useEffect(() => {
-        fetchHostedGuideJson(false);
-      }, []);
-
-      const availablePatches = useMemo(() => {
-        const patchSet = new Set();
-        Object.values(rawChampionsData).forEach(champ => {
-          Object.keys(champ?.patch_stats || {}).forEach(p => patchSet.add(p));
-        });
-        return Array.from(patchSet).sort((a, b) => {
-          const [amaj, amin] = a.split(".").map(Number);
-          const [bmaj, bmin] = b.split(".").map(Number);
-          if (bmaj !== amaj) return bmaj - amaj;
-          return bmin - amin;
-        });
-      }, [rawChampionsData]);
-
-      const mergedAllRawChampions = useMemo(() => {
-        const combined = {};
-        const lowerToCanonicalKey = {};
-
-        Object.values(ddChampionsMap).forEach(ddChamp => {
-          const key = ddChamp.id;
-          lowerToCanonicalKey[key.toLowerCase()] = key;
-          combined[key] = {
-            champion_name: key,
-            kr_name: ddChamp.name,
-            roles: ddChamp.tags || ["Fighter"],
-            hasRealData: false,
-            best_augments: [],
-            best_prismatics: [],
-            core_items: [],
-            best_partners: []
+      Object.entries(state.rawChampionsData).forEach(([rawKey, champ]) => {
+        if (!champ || typeof champ !== "object") return;
+        const cKey = lowerToCanonical[String(champ.champion_name || rawKey).trim().toLowerCase()] || String(champ.champion_name || rawKey).trim();
+        const ddInfo = state.ddChampionsMap[cKey];
+        const correctedAugs = (champ.best_augments || []).map((aug) => {
+          const fixedName = normalizeAugmentName(aug.name);
+          const off = state.cdAugmentMetaMap[fixedName];
+          return {
+            ...aug,
+            name: fixedName,
+            rarity: resolveOfficialRarity(off?.rarity || aug.rarity, fixedName),
+            icon: off?.icon || aug.icon || aug.icon_url || ""
           };
         });
-
-        const resolveCanonicalKey = (rawKey) => {
-          const k = String(rawKey || "").trim();
-          if (!k) return "";
-          return lowerToCanonicalKey[k.toLowerCase()] || k;
-        };
-
-        Object.entries(rawChampionsData || {}).forEach(([rawKey, champ]) => {
-          if (!champ || typeof champ !== "object") return;
-          const canonicalKey = resolveCanonicalKey(champ.champion_name || rawKey);
-          if (!canonicalKey) return;
-          const ddInfo = ddChampionsMap[canonicalKey];
-
-          const correctedAugments = (champ.best_augments || []).map(aug => {
-            const fixedName = normalizeAugmentName(aug.name);
-            const official = cdAugmentMetaMap[fixedName];
-            const verifiedRarity = resolveOfficialRarity(official?.rarity || aug.rarity, fixedName);
-            return {
-              ...aug,
-              name: fixedName,
-              rarity: verifiedRarity,
-              icon: official?.icon || aug.icon || aug.icon_url || "",
-              icon_url: official?.icon || aug.icon_url || aug.icon || ""
-            };
-          });
-
-          const correctedPartners = (champ.best_partners || []).map(pt => {
-            const pKey = resolveCanonicalKey(pt.partner || pt.champion);
-            const pDd = ddChampionsMap[pKey];
-            return {
-              ...pt,
-              partner: pKey,
-              champion: pKey,
-              name: pDd?.name || pt.name || pKey
-            };
-          });
-
-          const rawKrName = champ.kr_name;
-          const isFallbackEng = !rawKrName || rawKrName.toLowerCase() === canonicalKey.toLowerCase();
-
-          combined[canonicalKey] = {
-            ...(combined[canonicalKey] || {}),
-            ...champ,
-            champion_name: canonicalKey,
-            kr_name: (!isFallbackEng ? rawKrName : null) || ddInfo?.name || canonicalKey,
-            roles: (ddInfo?.tags && ddInfo.tags.length > 0) ? ddInfo.tags : (champ.roles || ["Fighter"]),
-            best_augments: correctedAugments,
-            best_partners: correctedPartners,
-            hasRealData: true
-          };
-        });
-
-        return combined;
-      }, [ddChampionsMap, rawChampionsData, cdAugmentMetaMap]);
-
-      const enrichedChampionsList = useMemo(() => {
-        return Object.values(mergedAllRawChampions).map(champ => ({
+        combined[cKey] = {
+          ...(combined[cKey] || {}),
           ...champ,
-          computedSummary: computePatchFilteredSummary(champ, selectedPatch, availablePatches),
-          chosung: getKoreanChosung(champ.kr_name)
-        })).sort((a, b) => {
+          champion_name: cKey,
+          kr_name: champ.kr_name && champ.kr_name.toLowerCase() !== cKey.toLowerCase() ? champ.kr_name : ddInfo?.name || cKey,
+          roles: ddInfo?.tags && ddInfo.tags.length > 0 ? ddInfo.tags : champ.roles || ["Fighter"],
+          best_augments: correctedAugs,
+          hasRealData: true
+        };
+      });
+
+      const enrichedList = Object.values(combined)
+        .map((c) => ({ ...c, computedSummary: computePatchFilteredSummary(c, state.selectedPatch, availablePatches) }))
+        .sort((a, b) => {
           if (a.hasRealData !== b.hasRealData) return a.hasRealData ? -1 : 1;
           if (a.hasRealData && b.hasRealData) {
-            if (a.computedSummary.picks === 0 && b.computedSummary.picks > 0) return 1;
-            if (b.computedSummary.picks === 0 && a.computedSummary.picks > 0) return -1;
             if (a.computedSummary.bayes_placement !== b.computedSummary.bayes_placement) {
               return a.computedSummary.bayes_placement - b.computedSummary.bayes_placement;
             }
@@ -1467,304 +1158,210 @@
           }
           return (a.kr_name || "").localeCompare(b.kr_name || "", "ko");
         });
-      }, [mergedAllRawChampions, selectedPatch, availablePatches]);
 
-      const filteredChampions = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        return enrichedChampionsList.filter(c => {
-          if (onlyRealData && !c.hasRealData) return false;
-          if (roleFilter !== "전체") {
-            const koRoles = (c.roles || []).map(r => ROLE_KO_MAP[r] || r);
-            if (!koRoles.includes(roleFilter)) return false;
-          }
-          if (tierFilter !== "전체") {
-            if (c.computedSummary.tier_num !== Number(tierFilter)) return false;
-          }
-          if (q) {
-            const krMatch = (c.kr_name || "").toLowerCase().includes(q);
-            const enMatch = (c.champion_name || "").toLowerCase().includes(q);
-            const chosungMatch = (c.chosung || "").includes(q);
-            if (!krMatch && !enMatch && !chosungMatch) return false;
-          }
-          return true;
-        });
-      }, [enrichedChampionsList, onlyRealData, roleFilter, tierFilter, searchQuery]);
-
-      const activeChamp = useMemo(() => {
-        if (!selectedChampKey) return filteredChampions[0] || enrichedChampionsList[0] || null;
-        return enrichedChampionsList.find(c => c.champion_name === selectedChampKey) || filteredChampions[0] || null;
-      }, [enrichedChampionsList, filteredChampions, selectedChampKey]);
-
-      const processedAugments = useMemo(() => {
-        if (!activeChamp?.hasRealData) return [];
-        const baseList = activeChamp.best_augments || [];
-        const champPicks = activeChamp.computedSummary.picks || 100;
-        const champAvg = typeof activeChamp.computedSummary.avg_placement === "number" ? activeChamp.computedSummary.avg_placement : 3.5;
-        const champWin = typeof activeChamp.computedSummary.win_rate === "number" ? activeChamp.computedSummary.win_rate : 16.7;
-
-        const enriched = baseList.map(aug => {
-          const fixedName = normalizeAugmentName(aug.name);
-          const official = cdAugmentMetaMap[fixedName];
-          const withMeta = {
-            ...aug,
-            name: fixedName,
-            rarity: resolveOfficialRarity(official?.rarity || aug.rarity, fixedName),
-            icon: official?.icon || aug.icon || aug.icon_url || ""
-          };
-          return computeAugmentComposite(withMeta, champPicks, champAvg, champWin);
-        });
-
-        const filtered = rarityFilter === "전체" ? enriched : enriched.filter(a => a.rarity === rarityFilter);
-
-        return [...filtered].sort((a, b) => {
-          if (augmentSort === "top3") return (b.top3_rate - a.top3_rate) || (b.picks - a.picks);
-          if (augmentSort === "win") return (b.win - a.win) || (b.picks - a.picks);
-          if (augmentSort === "pick") return (b.pick_rate - a.pick_rate) || (b.picks - a.picks);
-          if (augmentSort === "avg") return (a.avg - b.avg) || (b.picks - a.picks);
-          return (b.composite_score - a.composite_score) || (b.picks - a.picks);
-        });
-      }, [activeChamp, rarityFilter, augmentSort, cdAugmentMetaMap]);
-
-      const augmentRarityCounts = useMemo(() => {
-        const counts = { 전체: 0, 프리즘: 0, 골드: 0, 실버: 0 };
-        if (!activeChamp?.hasRealData) return counts;
-        const list = activeChamp.best_augments || [];
-        counts.전체 = list.length;
-        list.forEach(a => {
-          const fixedName = normalizeAugmentName(a.name);
-          const r = resolveOfficialRarity(cdAugmentMetaMap[fixedName]?.rarity || a.rarity, fixedName);
-          if (counts[r] != null) counts[r] += 1;
-        });
-        return counts;
-      }, [activeChamp, cdAugmentMetaMap]);
-
-      const datasetOverview = useMemo(() => {
-        const realChamps = enrichedChampionsList.filter(c => c.hasRealData);
-        const totalPicks = realChamps.reduce((sum, c) => sum + (c.computedSummary.picks || 0), 0);
-        return {
-          realChampCount: realChamps.length,
-          totalPicks
-        };
-      }, [enrichedChampionsList]);
-
-      const handleFileLoad = (file) => {
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const parsed = JSON.parse(String(ev.target?.result || "{}"));
-            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-              showToast("error", "올바른 집계 JSON 파일(arena_3v3_guide_all_champs.json)이 아닙니다.");
-              return;
-            }
-            const keys = Object.keys(parsed);
-            if (keys.length === 0) {
-              showToast("error", "JSON 파일에 챔피언 데이터가 비어 있습니다.");
-              return;
-            }
-
-            setRawChampionsData(parsed);
-            setUploadedFileName(file.name);
-            setSelectedPatch("ALL");
-            setTierFilter("전체");
-            setRoleFilter("전체");
-            setOnlyRealData(true);
-
-            const firstBestKey = keys.sort((a, b) => {
-              const ap = parsed[a]?.summary?.bayes_placement ?? 9;
-              const bp = parsed[b]?.summary?.bayes_placement ?? 9;
-              return ap - bp;
-            })[0];
-            if (firstBestKey) {
-              const lowerMap = {};
-              Object.keys(ddChampionsMap).forEach(k => { lowerMap[k.toLowerCase()] = k; });
-              setSelectedChampKey(lowerMap[firstBestKey.toLowerCase()] || firstBestKey);
-            }
-
-            showToast("success", `'${file.name}' 로드 완료! 실측 챔피언 ${keys.length}명의 데이터에 공식 한글 명칭·등급을 적용했습니다.`);
-          } catch (err) {
-            showToast("error", `JSON 파싱 오류: ${err.message}`);
-          }
-        };
-        reader.onerror = () => showToast("error", "파일을 읽는 중 오류가 발생했습니다.");
-        reader.readAsText(file, "utf-8");
-      };
-
-      const handleClearData = () => {
-        setRawChampionsData({});
-        setUploadedFileName("");
-        setSelectedPatch("ALL");
-        setOnlyRealData(false);
-        setSelectedChampKey("");
-        showToast("info", "업로드된 데이터를 초기화했습니다.");
-      };
-
-      const handleSelectChampion = (champKey) => {
-        setSelectedChampKey(champKey);
-        setRarityFilter("전체");
-        if (window.innerWidth < 1024 && detailTopRef.current) {
-          detailTopRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      const q = state.searchQuery.trim().toLowerCase();
+      const filteredList = enrichedList.filter((c) => {
+        if (state.onlyRealData && !c.hasRealData) return false;
+        if (state.roleFilter !== "전체") {
+          const koRoles = (c.roles || []).map((r) => ROLE_KO_MAP[r] || r);
+          if (!koRoles.includes(state.roleFilter)) return false;
         }
-      };
+        if (state.tierFilter !== "전체" && c.computedSummary.tier_num !== Number(state.tierFilter)) return false;
+        if (q) {
+          const m1 = (c.kr_name || "").toLowerCase().includes(q);
+          const m2 = (c.champion_name || "").toLowerCase().includes(q);
+          if (!m1 && !m2) return false;
+        }
+        return true;
+      });
 
-      const hasRealData = Boolean(activeChamp?.hasRealData);
-      const summary = activeChamp?.computedSummary || {};
+      const activeChamp =
+        enrichedList.find((c) => c.champion_name === state.selectedChampKey) || filteredList[0] || enrichedList[0];
+      const s = activeChamp?.computedSummary || {};
 
-      return (
-        <div
-          className="min-h-screen flex flex-col"
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragging(false); }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            const file = e.dataTransfer?.files?.[0];
-            if (file) handleFileLoad(file);
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target?.files?.[0];
-              if (file) handleFileLoad(file);
-              e.target.value = "";
-            }}
-          />
-
-          {isDragging && (
-            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6 pointer-events-none">
-              <div className="hextech-card border-2 border-dashed border-hextech-cyan p-10 rounded-3xl text-center max-w-lg w-full">
-                <div className="text-5xl mb-4">📂</div>
-                <h2 className="text-2xl font-extrabold text-white mb-2">여기에 JSON 파일을 놓으세요</h2>
-                <p className="text-sm text-slate-300">
-                  직접 수집한 arena_3v3_guide_all_champs.json 파일을 드롭하면 즉시 분석이 시작됩니다.
-                </p>
-              </div>
+      return `
+        <main class="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <aside class="lg:col-span-4 xl:col-span-3 hextech-card p-4 rounded-2xl space-y-3">
+            <input type="text" data-input="search" value="${escapeHtml(state.searchQuery)}" placeholder="챔피언 검색 (가렌, Garen...)" class="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none" />
+            <div class="grid grid-cols-5 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+              ${["전체", "1", "2", "3", "4"]
+                .map(
+                  (t) =>
+                    `<button type="button" data-action="tier-filter" data-tier="${t}" class="py-1.5 rounded-lg text-xs font-bold ${
+                      state.tierFilter === t ? "bg-amber-400 text-slate-950" : "text-slate-300 hover:bg-slate-800"
+                    }">${t === "전체" ? "전체" : `${t}티어`}</button>`
+                )
+                .join("")}
             </div>
-          )}
-
-          {toastMsg && (
-            <div className="fixed top-4 right-4 z-50 max-w-md">
-              <div className={`px-4 py-3 rounded-xl border shadow-2xl flex items-start gap-3 text-sm backdrop-blur-md ${
-                toastMsg.type === "success"
-                  ? "bg-emerald-950/95 border-emerald-500/50 text-emerald-100"
-                  : toastMsg.type === "error"
-                    ? "bg-rose-950/95 border-rose-500/50 text-rose-100"
-                    : "bg-slate-900/95 border-hextech-gold/50 text-slate-100"
-              }`}>
-                <span className="text-base mt-0.5">
-                  {toastMsg.type === "success" ? "✅" : toastMsg.type === "error" ? "⚠️" : "ℹ️"}
-                </span>
-                <p className="flex-1 leading-relaxed">{toastMsg.text}</p>
-                <button onClick={() => setToastMsg(null)} className="text-slate-400 hover:text-white text-xs font-bold px-1">✕</button>
-              </div>
+            <div class="space-y-1 max-h-[520px] overflow-y-auto pr-1">
+              ${filteredList
+                .map((c, idx) => {
+                  const sel = activeChamp?.champion_name === c.champion_name;
+                  const badge = getTierBadgeMeta(c.computedSummary.tier_num);
+                  return `
+                    <button type="button" data-action="select-champ" data-champ="${escapeHtml(c.champion_name)}" class="w-full text-left px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 ${
+                      sel ? "bg-amber-500/15 border-amber-400/70" : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
+                    }">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-[11px] font-bold text-slate-500 w-4">${idx + 1}</span>
+                        <img src="${escapeHtml(CHAMP_IMG(c.champion_name, state.ddVersion))}" alt="${escapeHtml(c.kr_name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />
+                        <div class="min-w-0">
+                          <div class="text-xs font-bold text-white truncate">${escapeHtml(c.kr_name)}</div>
+                          <div class="text-[10px] text-slate-500">${c.hasRealData ? `${c.computedSummary.picks}판` : "미수집"}</div>
+                        </div>
+                      </div>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold border ${badge.cls}">${badge.label}</span>
+                    </button>
+                  `;
+                })
+                .join("")}
             </div>
-          )}
+          </aside>
 
-          {/* 상단 헤더 */}
-          <header className="sticky top-0 z-30 bg-hextech-bg/90 backdrop-blur-md border-b border-hextech-gold/25">
-            <div className="max-w-[1480px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-hextech-gold via-amber-500 to-yellow-700 flex items-center justify-center shadow-lg text-hextech-bg font-black text-lg">
+          <section class="lg:col-span-8 xl:col-span-9 space-y-5">
+            ${
+              activeChamp && activeChamp.hasRealData
+                ? `
+                  <div class="hextech-card p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                      <img src="${escapeHtml(CHAMP_IMG(activeChamp.champion_name, state.ddVersion))}" alt="${escapeHtml(activeChamp.kr_name)}" class="w-20 h-20 rounded-2xl border-2 border-hextech-gold/70 object-cover" onerror="handleImgErr(this)" />
+                      <div>
+                        <h2 class="text-2xl sm:text-3xl font-black text-white">${escapeHtml(activeChamp.kr_name)}</h2>
+                        <div class="text-xs text-slate-400 mt-1">${s.picks.toLocaleString()}판 실측 · 평균 ${s.avg_placement}위 · 1등 ${s.win_rate}% · Top 3 ${s.top3_rate}%</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div class="hextech-card p-5 rounded-2xl space-y-3">
+                      <h3 class="text-base font-extrabold text-white pb-2 border-b border-slate-800">⚡ 주요 증강체</h3>
+                      ${(activeChamp.best_augments || [])
+                        .slice(0, 8)
+                        .map(
+                          (aug) => `
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-800/50 text-xs">
+                              <div class="flex items-center gap-2.5 min-w-0">
+                                ${
+                                  aug.icon
+                                    ? `<img src="${escapeHtml(aug.icon)}" alt="${escapeHtml(aug.name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />`
+                                    : `<span class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center">✨</span>`
+                                }
+                                <span class="font-bold text-white truncate">${escapeHtml(aug.name)}</span>
+                              </div>
+                              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${getRarityPillCls(aug.rarity)}">${escapeHtml(aug.rarity)}</span>
+                            </div>
+                          `
+                        )
+                        .join("")}
+                    </div>
+
+                    <div class="hextech-card p-5 rounded-2xl space-y-3">
+                      <h3 class="text-base font-extrabold text-white pb-2 border-b border-slate-800">💎 프리즘 · 핵심 아이템</h3>
+                      ${[
+                        ...(activeChamp.best_prismatics || []).slice(0, 4).map((it) => ({ ...it, _isPrism: true })),
+                        ...(activeChamp.core_items || []).slice(0, 4).map((it) => ({ ...it, _isPrism: false }))
+                      ]
+                        .map((item) => {
+                          const iUrl = resolveLatestItemIcon(item, item._isPrism);
+                          return `
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-800/50 text-xs">
+                              <div class="flex items-center gap-2.5 min-w-0">
+                                ${
+                                  iUrl
+                                    ? `<img src="${escapeHtml(iUrl)}" alt="${escapeHtml(item.name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />`
+                                    : `<span class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center">💎</span>`
+                                }
+                                <span class="font-bold text-white truncate">${escapeHtml(item.name)}</span>
+                              </div>
+                              <span class="text-xs font-bold text-hextech-goldLight">${item.avg ?? item.avg_placement}위</span>
+                            </div>
+                          `;
+                        })
+                        .join("")}
+                    </div>
+                  </div>
+                `
+                : `<div class="hextech-card p-10 rounded-2xl text-center text-sm text-slate-400">선택한 챔피언의 실측 데이터가 없습니다.</div>`
+            }
+          </section>
+        </main>
+      `;
+    }
+
+    function render() {
+      const rootEl = document.getElementById("app");
+      if (!rootEl) return;
+
+      const realCount = Object.keys(state.rawChampionsData).length;
+
+      rootEl.innerHTML = `
+        <div class="min-h-screen flex flex-col">
+          <input id="jsonFileInput" type="file" accept=".json,application/json" class="hidden" />
+
+          ${
+            state.toastMsg
+              ? `
+                <div class="fixed top-4 right-4 z-50 max-w-md">
+                  <div class="px-4 py-3 rounded-xl border shadow-2xl flex items-start gap-3 text-xs sm:text-sm bg-slate-900/95 border-hextech-gold/60 text-white">
+                    <span>${state.toastMsg.type === "error" ? "⚠️" : "✅"}</span>
+                    <p class="flex-1 leading-relaxed">${escapeHtml(state.toastMsg.text)}</p>
+                    <button type="button" data-action="dismiss-toast" class="text-slate-400 hover:text-white font-bold px-1">✕</button>
+                  </div>
+                </div>
+              `
+              : ""
+          }
+
+          <header class="sticky top-0 z-30 bg-hextech-bg/92 backdrop-blur-md border-b border-hextech-gold/25">
+            <div class="max-w-[1480px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-700 flex items-center justify-center shadow-lg text-slate-950 font-black text-lg">
                   3v3
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-white">
-                      LoL 아레나 3v3 실측 데이터 분석기
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">
+                      LoL 아레나 3v3 공략 가이드 & 실측 분석기
                     </h1>
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-hextech-cyan/15 text-hextech-cyan border border-hextech-cyan/35">
+                    <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-teal-500/15 text-teal-300 border border-teal-400/35">
                       6팀 · 18인 모드
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5 flex-wrap">
-                    <span>
-                      {ddSyncState === "ready"
-                        ? `🟢 Riot 공식 명칭·등급 동기화 완료 (v${ddVersion})`
-                        : ddSyncState === "loading"
-                          ? "🟡 Riot 공식 명칭·등급 동기화 중..."
-                          : `🟠 오프라인 폴백 (v${ddVersion})`}
-                    </span>
-                    <span className="hidden sm:inline text-slate-600">|</span>
-                    <span className="text-hextech-goldLight font-medium">
-                      {hasUploadedData
-                        ? `${uploadedFileName} (${datasetOverview.realChampCount}명 · ${datasetOverview.totalPicks.toLocaleString()}판${lastSyncedAt ? ` · 갱신 ${lastSyncedAt}` : ""})`
-                        : autoLoadState === "loading"
-                          ? "최신 실측 JSON 확인 중..."
-                          : "업로드된 실측 JSON 없음"}
-                    </span>
+                  <div class="text-xs text-slate-400 mt-0.5">
+                    ${state.ddSyncState === "ready" ? `🟢 Riot 공식 명칭·아이콘 동기화 (v${escapeHtml(state.ddVersion)})` : "🟡 공식 데이터 동기화 중..."}
+                    ${realCount > 0 ? ` · 실측 ${realCount}명 로드됨` : ""}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* 메인 페이지 전환 탭 (실측 분석 / 공용 1등 플랜) */}
-                <div className="flex items-center bg-slate-900/95 p-1 rounded-xl border border-slate-700/80">
+              <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700/80">
                   <button
-                    onClick={() => setViewMode("analytics")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
-                      viewMode === "analytics"
-                        ? "bg-hextech-cyan text-slate-950 shadow"
-                        : "text-slate-300 hover:text-white"
-                    }`}
+                    type="button"
+                    data-action="switch-view"
+                    data-view="plans"
+                    class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      state.viewMode === "plans" ? "bg-amber-400 text-slate-950 shadow" : "text-slate-300 hover:text-white"
+                    }"
+                  >
+                    🏆 공용 1등 플랜 (${COMMON_WIN_PLANS.length})
+                  </button>
+                  <button
+                    type="button"
+                    data-action="switch-view"
+                    data-view="analytics"
+                    class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      state.viewMode === "analytics" ? "bg-teal-400 text-slate-950 shadow" : "text-slate-300 hover:text-white"
+                    }"
                   >
                     📊 실측 분석
                   </button>
-                  <button
-                    onClick={() => setViewMode("plans")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1 ${
-                      viewMode === "plans"
-                        ? "bg-hextech-gold text-hextech-bg shadow"
-                        : "text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    <span>🏆 공용 1등 플랜</span>
-                    <span className={`px-1.5 py-0.2 rounded text-[10px] ${
-                      viewMode === "plans" ? "bg-slate-950/20 text-hextech-bg" : "bg-hextech-gold/20 text-hextech-goldLight"
-                    }`}>
-                      {COMMON_WIN_PLANS.length}
-                    </span>
-                  </button>
                 </div>
 
-                {viewMode === "analytics" && availablePatches.length > 0 && (
-                  <select
-                    value={selectedPatch}
-                    onChange={(e) => setSelectedPatch(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 hover:border-hextech-gold/60 rounded-xl px-3 py-2 text-xs font-bold text-slate-200 outline-none"
-                  >
-                    <option value="ALL">전체 패치 통합 ({availablePatches.join("·")})</option>
-                    {availablePatches.map(p => (
-                      <option key={p} value={p}>패치 {p} 단독</option>
-                    ))}
-                  </select>
-                )}
-
-                {autoLoadState === "loaded" && (
-                  <button
-                    onClick={() => fetchHostedGuideJson(true)}
-                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-hextech-cyan/40 text-xs font-bold text-hextech-cyan transition-colors"
-                    title="GitHub Pages에 반영된 최신 JSON 다시 불러오기"
-                  >
-                    🔄 최신 갱신
-                  </button>
-                )}
-
-                {hasUploadedData && (
-                  <button
-                    onClick={handleClearData}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors"
-                  >
-                    초기화
-                  </button>
-                )}
-
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-hextech-gold to-amber-500 text-hextech-bg font-extrabold text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-1.5"
+                  type="button"
+                  data-action="trigger-upload"
+                  class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-extrabold text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-1.5"
                 >
                   <span>📂</span>
                   <span>실측 JSON 불러오기</span>
@@ -1773,664 +1370,252 @@
             </div>
           </header>
 
-          {/* 공용 1등 플랜 전용 페이지 */}
-          {viewMode === "plans" ? (
-            <CommonPlansView
-              ddVersion={ddVersion}
-              ddItemNameMap={ddItemNameMap}
-              cdItemIconMap={cdItemIconMap}
-              cdAugmentMetaMap={cdAugmentMetaMap}
-              onBackToAnalytics={() => setViewMode("analytics")}
-            />
-          ) : !hasUploadedData ? (
-            /* JSON 미업로드 시: 깔끔한 드롭존 안내 화면 */
-            <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-14 flex items-center justify-center">
-              <div className="hextech-card p-8 sm:p-12 rounded-3xl text-center space-y-6 w-full">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-hextech-gold/15 border border-hextech-gold/40 flex items-center justify-center text-3xl">
-                  📊
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-black text-white">수집한 아레나 3v3 JSON을 올려주세요</h2>
-                  <p className="text-sm text-slate-400 leading-relaxed max-w-xl mx-auto">
-                    외부 사이트의 임의 통계는 전혀 포함되어 있지 않습니다. <br />
-                    <code className="text-hextech-cyan bg-slate-900 px-1.5 py-0.5 rounded">arena_3v3_collector.py</code>로 생성한
-                    <code className="text-hextech-goldLight bg-slate-900 px-1.5 py-0.5 rounded ml-1">arena_3v3_guide_all_champs.json</code> 파일을
-                    불러오면 Riot 공식 한국어 증강 명칭·등급(실버/골드/프리즘)과 아이콘이 자동 적용됩니다.
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-700 hover:border-hextech-cyan bg-slate-950/60 hover:bg-slate-900/80 transition-all rounded-2xl p-8 cursor-pointer space-y-3"
-                >
-                  <div className="text-4xl">📂</div>
-                  <div className="text-base font-extrabold text-white">클릭하거나 JSON 파일을 여기로 드래그하세요</div>
-                  <div className="text-xs text-slate-500">지원 파일: arena_3v3_guide_all_champs.json</div>
-                </div>
-
-                <div className="pt-1">
-                  <button
-                    onClick={() => setViewMode("plans")}
-                    className="px-5 py-2.5 rounded-xl bg-hextech-gold/15 hover:bg-hextech-gold/25 border border-hextech-gold/50 text-sm font-extrabold text-hextech-goldLight transition-all"
-                  >
-                    🏆 JSON 없이 「공용 1등 플랜 5종」 먼저 보기 →
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left pt-2">
-                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
-                    <div className="text-xs font-bold text-hextech-cyan mb-1">1. 순수 실측 통계</div>
-                    <p className="text-[11px] text-slate-400">업로드한 JSON의 판수, 평균 순위, 1등 확률, Top 3 승률만 표시합니다.</p>
-                  </div>
-                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
-                    <div className="text-xs font-bold text-fuchsia-300 mb-1">2. 공식 명칭·등급 보정</div>
-                    <p className="text-[11px] text-slate-400">Riot 공식 cherry-augments.json으로 실버·골드·프리즘 등급을 자동 교정합니다.</p>
-                  </div>
-                  <div className="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
-                    <div className="text-xs font-bold text-hextech-goldLight mb-1">3. 다중 패치 필터</div>
-                    <p className="text-[11px] text-slate-400">전체 패치 통합 가중치 및 개별 패치 단독 통계를 자유롭게 전환합니다.</p>
-                  </div>
-                </div>
-              </div>
-            </main>
-          ) : (
-            /* JSON 로드 완료 시: 2단 분석 대시보드 */
-            <main className="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              {/* 좌측 사이드바: 챔피언 목록 */}
-              <aside className="lg:col-span-4 xl:col-span-3 hextech-card p-4 rounded-2xl space-y-3.5 lg:sticky lg:top-24">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="챔피언 검색 (가렌, ㄱㄹ, Garen...)"
-                    className="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl pl-9 pr-8 py-2.5 text-xs text-white placeholder-slate-500 outline-none"
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
-                    <span className="font-semibold">실측 티어 필터</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={onlyRealData}
-                        onChange={(e) => setOnlyRealData(e.target.checked)}
-                        className="accent-hextech-cyan rounded"
-                      />
-                      <span>수집된 챔피언만 ({datasetOverview.realChampCount})</span>
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
-                    {["전체", "1", "2", "3", "4"].map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setTierFilter(t)}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          tierFilter === t
-                            ? "bg-hextech-gold text-hextech-bg shadow"
-                            : "text-slate-300 hover:text-white hover:bg-slate-800"
-                        }`}
-                      >
-                        {t === "전체" ? "전체" : `${t}티어`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {["전체", "전사", "마법사", "암살자", "원거리 딜러", "서포터", "탱커"].map(r => (
-                    <button
-                      key={r}
-                      onClick={() => setRoleFilter(r)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
-                        roleFilter === r
-                          ? "bg-hextech-cyan/20 text-hextech-cyan border-hextech-cyan/50"
-                          : "bg-slate-900/70 text-slate-400 border-slate-800 hover:text-slate-200"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-12 text-[11px] font-semibold text-slate-400 px-2 pt-2 border-t border-slate-800/80">
-                  <span className="col-span-1">#</span>
-                  <span className="col-span-5">챔피언</span>
-                  <span className="col-span-2 text-center">티어</span>
-                  <span className="col-span-2 text-right">Top3</span>
-                  <span className="col-span-2 text-right">순위</span>
-                </div>
-
-                <div className="space-y-1 max-h-[540px] lg:max-h-[calc(100vh-370px)] overflow-y-auto pr-1">
-                  {filteredChampions.length > 0 ? filteredChampions.map((champ, idx) => {
-                    const isSelected = activeChamp?.champion_name === champ.champion_name;
-                    const badge = getTierBadgeMeta(champ.computedSummary.tier_num);
-                    return (
-                      <button
-                        key={champ.champion_name}
-                        onClick={() => handleSelectChampion(champ.champion_name)}
-                        className={`w-full text-left px-2 py-2 rounded-xl border transition-all grid grid-cols-12 items-center gap-1 ${
-                          isSelected
-                            ? "bg-hextech-gold/15 border-hextech-gold/70 shadow-md"
-                            : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
-                        }`}
-                      >
-                        <span className="col-span-1 text-[11px] font-bold text-slate-500">
-                          {champ.hasRealData ? idx + 1 : "-"}
-                        </span>
-                        <div className="col-span-5 flex items-center gap-2 min-w-0">
-                          <SafeIcon
-                            src={CHAMP_IMG(champ.champion_name, ddVersion)}
-                            alt={champ.kr_name}
-                            className="w-8 h-8 rounded-lg border border-slate-700"
-                            emojiFallback="⚔️"
-                          />
-                          <div className="min-w-0">
-                            <div className="font-bold text-xs text-white truncate">{champ.kr_name}</div>
-                            <div className="text-[10px] text-slate-500 truncate">
-                              {champ.hasRealData && champ.computedSummary.picks > 0
-                                ? `${champ.computedSummary.picks.toLocaleString()}판`
-                                : "미수집"}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="col-span-2 text-center">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border inline-block ${badge.cls}`}>
-                            {badge.label}
-                          </span>
-                        </div>
-                        <div className="col-span-2 text-right text-xs font-bold text-sky-300">
-                          {champ.hasRealData && champ.computedSummary.picks > 0 ? `${champ.computedSummary.top3_rate}%` : "-"}
-                        </div>
-                        <div className="col-span-2 text-right text-xs font-bold text-hextech-goldLight">
-                          {champ.hasRealData && champ.computedSummary.picks > 0 ? `${champ.computedSummary.avg_placement}` : "-"}
-                        </div>
-                      </button>
-                    );
-                  }) : (
-                    <div className="py-10 text-center text-xs text-slate-500">조건에 맞는 챔피언이 없습니다.</div>
-                  )}
-                </div>
-              </aside>
-
-              {/* 우측 상세 영역 */}
-              <section ref={detailTopRef} className="lg:col-span-8 xl:col-span-9 space-y-5">
-                {activeChamp && hasRealData ? (
-                  <>
-                    <div className="hextech-card p-6 rounded-2xl">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-                        <div className="flex items-center gap-4">
-                          <div className="relative">
-                            <SafeIcon
-                              src={CHAMP_IMG(activeChamp.champion_name, ddVersion)}
-                              alt={activeChamp.kr_name}
-                              className="w-20 h-20 rounded-2xl border-2 border-hextech-gold/70 shadow-xl"
-                              emojiFallback="🏆"
-                            />
-                            {summary.tier_num > 0 && (
-                              <span className={`absolute -bottom-2 -right-2 px-2 py-0.5 rounded-lg text-xs font-black border shadow-lg ${getTierBadgeMeta(summary.tier_num).solid}`}>
-                                {summary.tier_num} 티어
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2.5 flex-wrap">
-                              <h2 className="text-2xl sm:text-3xl font-black text-white">{activeChamp.kr_name}</h2>
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
-                                {summary.picks.toLocaleString()}판 실측
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                              {(activeChamp.roles || []).map((r, i) => (
-                                <span key={i} className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-900 text-slate-300 border border-slate-700">
-                                  {ROLE_KO_MAP[r] || r}
-                                </span>
-                              ))}
-                              {activeChamp.patch_scope && (
-                                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-hextech-gold/10 text-hextech-goldLight border border-hextech-gold/30">
-                                  패치 {selectedPatch === "ALL" ? activeChamp.patch_scope : selectedPatch}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
-                            <div className="text-[11px] text-slate-400">평균 순위</div>
-                            <div className="text-lg font-extrabold text-hextech-goldLight mt-0.5">{summary.avg_placement}</div>
-                            <div className="text-[10px] text-slate-500">보정 {summary.bayes_placement}</div>
-                          </div>
-                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
-                            <div className="text-[11px] text-slate-400">1등 확률</div>
-                            <div className="text-lg font-extrabold text-emerald-400 mt-0.5">{summary.win_rate}%</div>
-                            <div className="text-[10px] text-slate-500">6팀 기대 16.7%</div>
-                          </div>
-                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
-                            <div className="text-[11px] text-slate-400">상위권 (Top 3)</div>
-                            <div className="text-lg font-extrabold text-sky-300 mt-0.5">{summary.top3_rate}%</div>
-                            <div className="text-[10px] text-slate-500">1~3위 비율</div>
-                          </div>
-                          <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 rounded-xl text-center">
-                            <div className="text-[11px] text-slate-400">평균 피해량</div>
-                            <div className="text-lg font-extrabold text-rose-300 mt-0.5">
-                              {summary.avg_damage > 0 ? `${(summary.avg_damage / 1000).toFixed(1)}k` : "-"}
-                            </div>
-                            <div className="text-[10px] text-slate-500">챔피언 대상</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 pt-4 border-t border-slate-800/90 flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 w-fit flex-wrap">
-                        {[
-                          { id: "build", label: "빌드 요약" },
-                          { id: "augments", label: `증강체 (${augmentRarityCounts.전체})` },
-                          { id: "items", label: "아이템" },
-                          { id: "synergies", label: `파트너 조합 (${(activeChamp.best_partners || []).length})` }
-                        ].map(tab => (
-                          <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
-                              activeTab === tab.id
-                                ? "bg-hextech-cyan text-slate-950 shadow"
-                                : "text-slate-300 hover:text-white hover:bg-slate-800"
-                            }`}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 빌드 요약 탭 */}
-                    {activeTab === "build" && (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                          <div className="xl:col-span-7 hextech-card p-5 rounded-2xl space-y-3">
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                              <h3 className="text-base font-extrabold text-white">⚡ 핵심 증강체</h3>
-                              <button onClick={() => setActiveTab("augments")} className="text-xs font-bold text-hextech-cyan hover:underline">
-                                등급별 전체 보기 →
-                              </button>
-                            </div>
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left border-collapse">
-                                <thead>
-                                  <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
-                                    <th className="py-2 font-semibold">증강체</th>
-                                    <th className="py-2 font-semibold text-center">등급</th>
-                                    <th className="py-2 font-semibold text-right">픽률</th>
-                                    <th className="py-2 font-semibold text-right">평균 순위</th>
-                                    <th className="py-2 font-semibold text-right">Top 3</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60">
-                                  {processedAugments.slice(0, 6).map((aug, idx) => (
-                                    <tr key={`${aug.name}-${idx}`} className="hover:bg-slate-800/35">
-                                      <td className="py-2.5 pr-2">
-                                        <div className="flex items-center gap-2.5">
-                                          <SafeIcon
-                                            src={aug.icon || aug.icon_url || cdAugmentMetaMap[aug.name]?.icon}
-                                            alt={aug.name}
-                                            className="w-9 h-9 rounded-lg border border-slate-700"
-                                            emojiFallback={aug.rarity === "프리즘" ? "💎" : aug.rarity === "골드" ? "🌟" : "🔹"}
-                                          />
-                                          <div className="text-sm font-bold text-white truncate">{aug.name}</div>
-                                        </div>
-                                      </td>
-                                      <td className="py-2.5 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getRarityPillCls(aug.rarity)}`}>
-                                          {aug.rarity}
-                                        </span>
-                                      </td>
-                                      <td className="py-2.5 text-right">
-                                        <div className="text-xs font-bold text-slate-200">{aug.pick_rate}%</div>
-                                        <div className="text-[10px] text-slate-500">{aug.picks}판</div>
-                                      </td>
-                                      <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{aug.avg}</td>
-                                      <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{aug.top3_rate}%</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-
-                          <div className="xl:col-span-5 hextech-card p-5 rounded-2xl space-y-3">
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                              <h3 className="text-base font-extrabold text-white">🤝 추천 파트너</h3>
-                              <button onClick={() => setActiveTab("synergies")} className="text-xs font-bold text-hextech-cyan hover:underline">
-                                전체 보기 →
-                              </button>
-                            </div>
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
-                                  <th className="py-2 font-semibold">파트너</th>
-                                  <th className="py-2 font-semibold text-right">평균 순위</th>
-                                  <th className="py-2 font-semibold text-right">1등 확률</th>
-                                  <th className="py-2 font-semibold text-right">Top 3</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-800/60">
-                                {(activeChamp.best_partners || []).slice(0, 6).map((pt, idx) => {
-                                  const pKey = pt.partner || pt.champion;
-                                  return (
-                                    <tr key={`${pKey}-${idx}`} onClick={() => handleSelectChampion(pKey)} className="hover:bg-slate-800/45 cursor-pointer">
-                                      <td className="py-2.5">
-                                        <div className="flex items-center gap-2.5">
-                                          <SafeIcon src={CHAMP_IMG(pKey, ddVersion)} alt={pt.name || pKey} className="w-8 h-8 rounded-lg border border-slate-700" emojiFallback="🤝" />
-                                          <div>
-                                            <div className="text-xs font-bold text-white">{pt.name || pKey}</div>
-                                            <div className="text-[10px] text-slate-500">{pt.games}판</div>
-                                          </div>
-                                        </div>
-                                      </td>
-                                      <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{pt.avg ?? pt.avg_placement}</td>
-                                      <td className="py-2.5 text-right text-xs font-bold text-emerald-400">{pt.win_rate != null ? `${pt.win_rate}%` : "-"}</td>
-                                      <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{pt.top3_rate != null ? `${pt.top3_rate}%` : "-"}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                          <div className="hextech-card p-5 rounded-2xl space-y-3">
-                            <h3 className="text-base font-extrabold text-white pb-3 border-b border-slate-800">💎 프리즘 아이템</h3>
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
-                                  <th className="py-2 font-semibold">아이템</th>
-                                  <th className="py-2 font-semibold text-right">평균 순위</th>
-                                  <th className="py-2 font-semibold text-right">1등 확률</th>
-                                  <th className="py-2 font-semibold text-right">Top 3</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-800/60">
-                                {(activeChamp.best_prismatics || []).slice(0, 6).map((item, idx) => (
-                                  <tr key={idx} className="hover:bg-slate-800/35">
-                                    <td className="py-2.5">
-                                      <div className="flex items-center gap-2.5">
-                                        <SafeIcon
-                                          src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, true)}
-                                          fallbackSrc={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
-                                          alt={item.name}
-                                          className="w-9 h-9 rounded-lg border border-fuchsia-400/50"
-                                          emojiFallback="💎"
-                                        />
-                                        <div>
-                                          <div className="text-xs font-bold text-white">{item.name}</div>
-                                          <div className="text-[10px] text-slate-500">{item.picks}판</div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{item.avg ?? item.avg_placement}</td>
-                                    <td className="py-2.5 text-right text-xs font-bold text-emerald-400">{item.win ?? item.win_rate}%</td>
-                                    <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{item.top3_rate != null ? `${item.top3_rate}%` : "-"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          <div className="hextech-card p-5 rounded-2xl space-y-3">
-                            <h3 className="text-base font-extrabold text-white pb-3 border-b border-slate-800">🛡️ 핵심 코어 아이템</h3>
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="text-[11px] text-slate-400 border-b border-slate-800/80">
-                                  <th className="py-2 font-semibold">아이템</th>
-                                  <th className="py-2 font-semibold text-right">픽률</th>
-                                  <th className="py-2 font-semibold text-right">평균 순위</th>
-                                  <th className="py-2 font-semibold text-right">Top 3</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-800/60">
-                                {(activeChamp.core_items || []).slice(0, 6).map((item, idx) => (
-                                  <tr key={idx} className="hover:bg-slate-800/35">
-                                    <td className="py-2.5">
-                                      <div className="flex items-center gap-2.5">
-                                        <SafeIcon
-                                          src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
-                                          fallbackSrc={cdItemIconMap[item.name] || item.icon || item.icon_url}
-                                          alt={item.name}
-                                          className="w-9 h-9 rounded-lg border border-slate-700"
-                                          emojiFallback="🗡️"
-                                        />
-                                        <div>
-                                          <div className="text-xs font-bold text-white">{item.name}</div>
-                                          <div className="text-[10px] text-slate-500">{item.picks}판</div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td className="py-2.5 text-right text-xs font-bold text-slate-200">{item.pick_rate != null ? `${item.pick_rate}%` : "-"}</td>
-                                    <td className="py-2.5 text-right text-xs font-bold text-hextech-goldLight">{item.avg ?? item.avg_placement}</td>
-                                    <td className="py-2.5 text-right text-xs font-extrabold text-sky-300">{item.top3_rate != null ? `${item.top3_rate}%` : "-"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 증강체 전용 탭 */}
-                    {activeTab === "augments" && (
-                      <div className="hextech-card p-6 rounded-2xl space-y-5">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-                          <div>
-                            <h3 className="text-lg font-extrabold text-white">⚡ {activeChamp.kr_name} 증강체 실측 통계</h3>
-                            <p className="text-xs text-slate-400">Riot 공식 cherry-augments.json 기준으로 실버·골드·프리즘 등급을 분류했습니다.</p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                              {["전체", "실버", "골드", "프리즘"].map(r => (
-                                <button
-                                  key={r}
-                                  onClick={() => setRarityFilter(r)}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                    rarityFilter === r
-                                      ? r === "프리즘"
-                                        ? "bg-fuchsia-500 text-white"
-                                        : r === "골드"
-                                          ? "bg-amber-500 text-slate-950"
-                                          : r === "실버"
-                                            ? "bg-slate-300 text-slate-950"
-                                            : "bg-hextech-cyan text-slate-950"
-                                      : "text-slate-400 hover:text-white"
-                                  }`}
-                                >
-                                  {r} ({augmentRarityCounts[r] || 0})
-                                </button>
-                              ))}
-                            </div>
-                            <select
-                              value={augmentSort}
-                              onChange={(e) => setAugmentSort(e.target.value)}
-                              className="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-200 outline-none"
-                            >
-                              <option value="composite">종합 추천순</option>
-                              <option value="pick">픽률순</option>
-                              <option value="top3">Top 3 승률순</option>
-                              <option value="win">1등 확률순</option>
-                              <option value="avg">평균 순위순</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {processedAugments.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="text-[11px] text-slate-400 border-b border-slate-800">
-                                  <th className="py-2.5 pl-2 font-semibold">증강체</th>
-                                  <th className="py-2.5 font-semibold text-center">등급</th>
-                                  <th className="py-2.5 font-semibold text-right">픽률</th>
-                                  <th className="py-2.5 font-semibold text-right">평균 순위</th>
-                                  <th className="py-2.5 font-semibold text-right">1등 확률</th>
-                                  <th className="py-2.5 pr-2 font-semibold text-right">Top 3 승률</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-800/60">
-                                {processedAugments.map((aug, idx) => (
-                                  <tr key={`${aug.name}-${idx}`} className="hover:bg-slate-800/40">
-                                    <td className="py-3 pl-2 pr-3">
-                                      <div className="flex items-center gap-3">
-                                        <SafeIcon
-                                          src={aug.icon || aug.icon_url || cdAugmentMetaMap[aug.name]?.icon}
-                                          alt={aug.name}
-                                          className="w-11 h-11 rounded-xl border border-slate-700"
-                                          emojiFallback={aug.rarity === "프리즘" ? "💎" : aug.rarity === "골드" ? "🌟" : "🔹"}
-                                        />
-                                        <div className="font-extrabold text-sm text-white">{aug.name}</div>
-                                      </div>
-                                    </td>
-                                    <td className="py-3 text-center">
-                                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${getRarityPillCls(aug.rarity)}`}>
-                                        {aug.rarity}
-                                      </span>
-                                    </td>
-                                    <td className="py-3 text-right">
-                                      <div className="text-sm font-bold text-white">{aug.pick_rate}%</div>
-                                      <div className="text-[10px] text-slate-500">{aug.picks}판</div>
-                                    </td>
-                                    <td className="py-3 text-right text-sm font-extrabold text-hextech-goldLight">{aug.avg}</td>
-                                    <td className="py-3 text-right text-sm font-bold text-emerald-400">{aug.win}%</td>
-                                    <td className="py-3 pr-2 text-right text-sm font-extrabold text-sky-300">{aug.top3_rate}%</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
-                            선택한 등급({rarityFilter})에 해당하는 실측 증강 데이터가 없습니다.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 아이템 전용 탭 */}
-                    {activeTab === "items" && (
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        <div className="hextech-card p-6 rounded-2xl space-y-3">
-                          <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">💎 프리즘 아이템</h3>
-                          {(activeChamp.best_prismatics || []).map((item, idx) => (
-                            <div key={idx} className="prismatic-border bg-slate-900/85 p-3.5 rounded-xl flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <SafeIcon
-                                  src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, true)}
-                                  fallbackSrc={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
-                                  alt={item.name}
-                                  className="w-11 h-11 rounded-lg border border-fuchsia-400/40"
-                                  emojiFallback="💎"
-                                />
-                                <div className="min-w-0">
-                                  <div className="text-sm font-bold text-white truncate">{item.name}</div>
-                                  <div className="text-[11px] text-slate-400">픽률 {item.pick_rate ?? "-"}% · {item.picks}판</div>
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <div className="text-xs font-extrabold text-hextech-goldLight">평균 {item.avg ?? item.avg_placement}위</div>
-                                <div className="text-[11px] text-emerald-400 font-semibold">1등 {item.win ?? item.win_rate}%</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="hextech-card p-6 rounded-2xl space-y-3">
-                          <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">🛡️ 핵심 코어 아이템</h3>
-                          {(activeChamp.core_items || []).map((item, idx) => (
-                            <div key={idx} className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <SafeIcon
-                                  src={resolveLatestItemIcon(item, ddVersion, ddItemNameMap, cdItemIconMap, false)}
-                                  fallbackSrc={cdItemIconMap[item.name] || item.icon || item.icon_url}
-                                  alt={item.name}
-                                  className="w-11 h-11 rounded-lg border border-slate-700"
-                                  emojiFallback="🗡️"
-                                />
-                                <div className="min-w-0">
-                                  <div className="text-sm font-bold text-white truncate">{item.name}</div>
-                                  <div className="text-[11px] text-slate-400">픽률 {item.pick_rate ?? "-"}% · {item.picks}판</div>
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <div className="text-xs font-extrabold text-hextech-goldLight">평균 {item.avg ?? item.avg_placement}위</div>
-                                {item.top3_rate != null && <div className="text-[11px] text-sky-300 font-semibold">Top3 {item.top3_rate}%</div>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 파트너 조합 탭 */}
-                    {activeTab === "synergies" && (
-                      <div className="hextech-card p-6 rounded-2xl space-y-4">
-                        <h3 className="text-lg font-extrabold text-white pb-3 border-b border-slate-800">🤝 {activeChamp.kr_name} 3v3 파트너 시너지</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                          {(activeChamp.best_partners || []).map((pt, idx) => {
-                            const pKey = pt.partner || pt.champion;
-                            return (
-                              <button
-                                key={`${pKey}-${idx}`}
-                                onClick={() => handleSelectChampion(pKey)}
-                                className="text-left bg-slate-900/80 hover:bg-slate-800/85 border border-slate-800 hover:border-hextech-gold/60 p-4 rounded-xl transition-all flex items-center justify-between gap-3"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <SafeIcon src={CHAMP_IMG(pKey, ddVersion)} alt={pt.name || pKey} className="w-12 h-12 rounded-xl border border-slate-700" emojiFallback="🤝" />
-                                  <div className="min-w-0">
-                                    <div className="font-bold text-sm text-white truncate">{pt.name || pKey}</div>
-                                    <div className="text-[11px] text-slate-400">{pt.games}판</div>
-                                  </div>
-                                </div>
-                                <div className="text-right shrink-0">
-                                  <div className="text-xs font-extrabold text-hextech-goldLight">평균 {pt.avg ?? pt.avg_placement}위</div>
-                                  {pt.win_rate != null && <div className="text-[11px] text-emerald-400 font-semibold">1등 {pt.win_rate}%</div>}
-                                  {pt.top3_rate != null && <div className="text-[11px] text-sky-300 font-semibold">Top3 {pt.top3_rate}%</div>}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="hextech-card p-12 rounded-2xl text-center space-y-2">
-                    <div className="text-2xl">📭</div>
-                    <div className="text-sm font-bold text-white">{activeChamp?.kr_name || "선택한 챔피언"}의 수집된 매치 데이터가 없습니다.</div>
-                    <p className="text-xs text-slate-400">좌측 목록에서 실측 데이터가 있는 챔피언을 선택하거나, 더 많은 매치를 수집한 JSON을 업로드해 주세요.</p>
-                  </div>
-                )}
-              </section>
-            </main>
-          )}
+          ${state.viewMode === "plans" ? renderCommonPlansHtml() : renderAnalyticsHtml()}
         </div>
-      );
+      `;
+
+      bindEvents();
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(
-      <ErrorBoundary>
-        <ArenaGuideApp />
-      </ErrorBoundary>
-    );
+    function handleImgErr(imgEl) {
+      const fb = imgEl.getAttribute("data-fallback");
+      const emoji = imgEl.getAttribute("data-emoji") || "✨";
+      if (fb && imgEl.getAttribute("data-tried") !== "1") {
+        imgEl.setAttribute("data-tried", "1");
+        imgEl.src = fb;
+        return;
+      }
+      const span = document.createElement("span");
+      span.className = imgEl.className.replace("object-cover", "") + " bg-slate-800 flex items-center justify-center text-sm";
+      span.textContent = emoji;
+      imgEl.replaceWith(span);
+    }
+
+    function bindEvents() {
+      const fileInput = document.getElementById("jsonFileInput");
+      if (fileInput) {
+        fileInput.onchange = (e) => {
+          const f = e.target?.files?.[0];
+          if (!f) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            try {
+              const parsed = JSON.parse(String(ev.target?.result || "{}"));
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
+                setToast("error", "올바른 집계 JSON 파일이 아닙니다.");
+                return;
+              }
+              state.rawChampionsData = parsed;
+              state.uploadedFileName = f.name;
+              state.viewMode = "analytics";
+              state.selectedChampKey = Object.keys(parsed)[0] || "";
+              setToast("success", `'${f.name}' 로드 완료 (${Object.keys(parsed).length}명)`);
+            } catch (err) {
+              setToast("error", `JSON 파싱 오류: ${err.message}`);
+            }
+          };
+          reader.readAsText(f, "utf-8");
+        };
+      }
+
+      document.querySelectorAll("[data-action]").forEach((el) => {
+        const action = el.getAttribute("data-action");
+        if (action === "toggle-tooltip") {
+          const tKey = el.getAttribute("data-tooltip-key");
+          el.onclick = (e) => {
+            e.stopPropagation();
+            state.activeTooltipKey = state.activeTooltipKey === tKey ? null : tKey;
+            render();
+          };
+          const wrap = el.closest("[data-tooltip-wrap]");
+          if (wrap) {
+            wrap.onmouseenter = () => {
+              if (state.activeTooltipKey !== tKey) {
+                state.activeTooltipKey = tKey;
+                render();
+              }
+            };
+            wrap.onmouseleave = () => {
+              if (state.activeTooltipKey === tKey) {
+                state.activeTooltipKey = null;
+                render();
+              }
+            };
+          }
+        } else if (action === "close-tooltip") {
+          el.onclick = (e) => {
+            e.stopPropagation();
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "switch-view") {
+          el.onclick = () => {
+            state.viewMode = el.getAttribute("data-view") || "plans";
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "select-plan") {
+          el.onclick = () => {
+            state.selectedPlanId = el.getAttribute("data-plan-id") || "ALL";
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "trigger-upload") {
+          el.onclick = () => document.getElementById("jsonFileInput")?.click();
+        } else if (action === "dismiss-toast") {
+          el.onclick = () => {
+            state.toastMsg = null;
+            render();
+          };
+        } else if (action === "tier-filter") {
+          el.onclick = () => {
+            state.tierFilter = el.getAttribute("data-tier") || "전체";
+            render();
+          };
+        } else if (action === "select-champ") {
+          el.onclick = () => {
+            state.selectedChampKey = el.getAttribute("data-champ") || "";
+            render();
+          };
+        }
+      });
+
+      const searchInput = document.querySelector('[data-input="search"]');
+      if (searchInput) {
+        searchInput.oninput = (e) => {
+          state.searchQuery = e.target.value;
+          render();
+          const reInput = document.querySelector('[data-input="search"]');
+          if (reInput) {
+            reInput.focus();
+            reInput.setSelectionRange(reInput.value.length, reInput.value.length);
+          }
+        };
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      if (state.activeTooltipKey && !e.target.closest("[data-tooltip-wrap]")) {
+        state.activeTooltipKey = null;
+        render();
+      }
+    });
+
+    async function syncOfficialMetadata() {
+      try {
+        const verRes = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
+        if (!verRes.ok) return;
+        const versions = await verRes.json();
+        const latestVer = versions?.[0] || FALLBACK_DD_VERSION;
+
+        const [champRes, itemRes, cherryRes, arenaRes] = await Promise.all([
+          fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/champion.json`),
+          fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/item.json`),
+          fetch(CHERRY_AUGMENTS_KO_URL).catch(() => null),
+          fetch(CDRAGON_ARENA_KO_URL).catch(() => null)
+        ]);
+
+        if (!champRes.ok || !itemRes.ok) return;
+        const [champJson, itemJson] = await Promise.all([champRes.json(), itemRes.json()]);
+
+        const augMap = {};
+        const cdItems = {};
+        const cdPrismaticItems = {};
+        if (cherryRes && cherryRes.ok) {
+          const cherryList = await cherryRes.json();
+          if (Array.isArray(cherryList)) {
+            const numMap = calibrateNumericRarityMap(cherryList);
+            cherryList.forEach((aug) => {
+              const name = normalizeAugmentName(aug?.nameTRA || aug?.name || "");
+              if (!name || name === "???") return;
+              augMap[name] = {
+                id: Number(aug.id || 0),
+                rarity: resolveOfficialRarity(aug.rarity, name, numMap),
+                icon: normalizeCDragonAsset(aug.augmentSmallIconPath || aug.augmentLargeIconPath || "")
+              };
+            });
+          }
+        }
+
+        if (arenaRes && arenaRes.ok) {
+          const arenaJson = await arenaRes.json();
+          const rawAugs = arenaJson?.augments || [];
+          const numMap = calibrateNumericRarityMap(rawAugs);
+          rawAugs.forEach((aug) => {
+            const name = normalizeAugmentName(aug?.name || "");
+            if (!name || name === "???") return;
+            const icon = normalizeCDragonAsset(aug.iconSmall || aug.iconLarge || "");
+            if (!augMap[name]) {
+              augMap[name] = {
+                id: Number(aug.id || 0),
+                rarity: resolveOfficialRarity(aug.rarity, name, numMap),
+                icon
+              };
+            } else if (!augMap[name].icon && icon) {
+              augMap[name].icon = icon;
+            }
+          });
+          (arenaJson?.items || []).forEach((it) => {
+            const iname = String(it?.name || "").trim();
+            const iid = Number(it?.id || 0);
+            const iconUrl = normalizeCDragonAsset(it?.iconPath || "");
+            if (!iname || !iconUrl) return;
+            if (iid >= 440000 && iid < 450000) {
+              cdPrismaticItems[iname] = iconUrl;
+            }
+            if (!cdItems[iname] || (iid >= 440000 && iid < 450000)) {
+              cdItems[iname] = iconUrl;
+            }
+          });
+        }
+
+        const itemNameMap = {};
+        const itemNamePriority = {};
+        const prismaticItemIdMap = {};
+        Object.entries(itemJson.data || {}).forEach(([idStr, info]) => {
+          const iname = String(info?.name || "").trim();
+          const iid = Number(idStr);
+          if (!iname || !iid) return;
+          if (iid >= 440000 && iid < 450000) {
+            prismaticItemIdMap[iname] = iid;
+          }
+          const prio = (iid >= 1000 && iid < 7000) ? 3 : (iid >= 220000 && iid < 230000) ? 2 : 1;
+          if (!itemNameMap[iname] || prio > (itemNamePriority[iname] || 0)) {
+            itemNameMap[iname] = iid;
+            itemNamePriority[iname] = prio;
+          }
+        });
+
+        state.ddVersion = latestVer;
+        state.ddChampionsMap = champJson.data || {};
+        state.ddItemNameMap = itemNameMap;
+        state.ddPrismaticItemIdMap = prismaticItemIdMap;
+        state.cdAugmentMetaMap = augMap;
+        state.cdItemIconMap = cdItems;
+        state.cdPrismaticIconMap = cdPrismaticItems;
+        state.ddSyncState = "ready";
+        render();
+      } catch (_) {}
+    }
+
+    async function tryAutoLoadHostedJson() {
+      try {
+        const res = await fetch(`./arena_3v3_guide_all_champs.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const parsed = await res.json();
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+          state.rawChampionsData = parsed;
+          state.uploadedFileName = "arena_3v3_guide_all_champs.json";
+          state.selectedChampKey = Object.keys(parsed)[0] || "";
+          render();
+        }
+      } catch (_) {}
+    }
+
+    // 즉시 첫 렌더링 실행
+    render();
+    syncOfficialMetadata();
+    tryAutoLoadHostedJson();
   </script>
 </body>
 </html>
