@@ -8,8 +8,10 @@ LoL 아레나 3v3 (6팀 · 18인 모드) 자동 수집 및 통합 집계기
   1순위: Riot LCU 공식 ko_kr/v1/cherry-augments.json (nameTRA + kSilver/kGold/kPrismatic)
   2순위: CommunityDragon cdragon/arena/ko_kr.json (프리즘 아이템 및 누락 증강 보완)
   3순위: 한국어 공식 명칭/등급 교차 검증 사전 (통계 없음, 오직 명칭·등급 보정용)
+- 체크포인트는 GitHub 100MB 제한 회피를 위해 gzip 압축(arena_3v3_checkpoint.jsonl.gz)으로 자동 저장됩니다.
 """
 
+import gzip
 import json
 import math
 import os
@@ -54,7 +56,7 @@ COLAB_CONFIG: Dict[str, Any] = {
     "api_key": os.environ.get("RIOT_API_KEY", "RGAPI-YOUR-KEY-HERE"),
     # 라우팅 리전 (한국 서버: asia)
     "routing_region": os.environ.get("ROUTING_REGION", "asia"),
-    # True: 기존 체크포인트(arena_3v3_checkpoint.jsonl)만 읽어 즉시 재집계
+    # True: 기존 체크포인트만 읽어 즉시 재집계
     # False: Riot Match-V5 API로 신규 3v3 아레나 매치를 수집한 뒤 통합 집계
     "aggregate_only": _env_bool("AGGREGATE_ONLY", True),
     # 신규 수집할 최대 매치 수 (aggregate_only=False일 때 적용)
@@ -65,8 +67,8 @@ COLAB_CONFIG: Dict[str, Any] = {
     "target_patches": _env_csv_list("TARGET_PATCHES", []),
     # 체크포인트가 없을 때 크롤링 시작용 시드 소환사 Riot ID (gameName#tagLine)
     "seed_riot_ids": _env_csv_list("SEED_RIOT_IDS", ["Hide on bush#KR1"]),
-    # 입출력 파일 경로
-    "checkpoint_path": os.environ.get("CHECKPOINT_PATH", "arena_3v3_checkpoint.jsonl"),
+    # 입출력 파일 경로 (GitHub 100MB 제한 대응: .jsonl.gz 압축 기본 사용)
+    "checkpoint_path": os.environ.get("CHECKPOINT_PATH", "arena_3v3_checkpoint.jsonl.gz"),
     "output_json_path": os.environ.get("OUTPUT_JSON_PATH", "arena_3v3_guide_all_champs.json"),
     # 증강 집계 최소 표본 수 및 등급별 최대 출력 개수
     "min_aug_picks": _env_int("MIN_AUG_PICKS", 3),
@@ -134,10 +136,12 @@ OFFICIAL_AUGMENT_RARITY_KO: Dict[str, str] = {
     "기생 관계": "골드", "끊임없는 회복": "골드", "되풀이": "골드", "밥과 닭고기": "골드",
     "복수": "골드", "부메랑 투척": "골드", "빛의 인도자 결의": "골드", "빛의 파수꾼": "골드",
     "빵과 잼": "골드", "신난다!": "골드", "소멸": "골드",
+    "퀘스트: 미치광이 모자장수": "골드", "해트트릭": "골드",
     # 실버 (Silver)
     "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
     "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
-    "우당탕탕": "실버", "빨랫줄": "실버",
+    "우당탕탕": "실버", "빨랫줄": "실버", "점액 천지": "실버", "불여우": "실버",
+    "주스 압착기": "실버", "에너지 충전": "실버", "약탈": "실버",
 }
 
 # 구 명칭 -> 공식 한국어 명칭 치환 사전
@@ -611,7 +615,7 @@ class RiotApiClient:
 
 
 # =============================================================================
-# 6. 3v3 아레나 매치 파싱 및 체크포인트 로드/저장
+# 6. 3v3 아레나 매치 파싱 및 체크포인트 로드/저장 (gzip 압축 지원)
 # =============================================================================
 
 
@@ -793,50 +797,98 @@ def normalize_checkpoint_row(row: Dict[str, Any], meta: GameMetadata) -> Optiona
     }
 
 
+def _open_checkpoint_read(filepath: str):
+    if filepath.endswith(".gz"):
+        return gzip.open(filepath, "rt", encoding="utf-8")
+    return open(filepath, "r", encoding="utf-8")
+
+
+def save_checkpoint_compact(filepath: str, records: List[Dict[str, Any]]) -> None:
+    """전체 레코드를 단일 스트림으로 깔끔하게 저장(gzip 사용 시 최대 압축)합니다."""
+    if not records:
+        return
+    tmp_path = filepath + ".tmp"
+    opener = (
+        (lambda p: gzip.open(p, "wt", encoding="utf-8", compresslevel=6))
+        if filepath.endswith(".gz")
+        else (lambda p: open(p, "w", encoding="utf-8"))
+    )
+    with opener(tmp_path) as fp:
+        for r in records:
+            fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+    os.replace(tmp_path, filepath)
+    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    log_print(f"[체크포인트 압축 저장] '{filepath}' ({size_mb:.2f} MB, {len(records):,}건)")
+
+
 def load_checkpoint(filepath: str, meta: GameMetadata) -> Tuple[List[Dict[str, Any]], Set[str], Set[str]]:
-    """체크포인트 JSONL 파일을 로드하고 중복 레코드를 제거합니다."""
+    """압축(.jsonl.gz) 및 기존 비압축(.jsonl) 체크포인트를 모두 읽어 중복 제거 후 자동 마이그레이션합니다."""
     records: List[Dict[str, Any]] = []
     seen_match_ids: Set[str] = set()
     seen_puuids: Set[str] = set()
     seen_row_keys: Set[Tuple[str, str, str]] = set()
 
-    if not os.path.exists(filepath):
+    candidate_files: List[str] = []
+    legacy_plain_path = filepath[:-3] if filepath.endswith(".gz") else ""
+    if legacy_plain_path and os.path.exists(legacy_plain_path):
+        candidate_files.append(legacy_plain_path)
+    if os.path.exists(filepath):
+        candidate_files.append(filepath)
+
+    if not candidate_files:
         return records, seen_match_ids, seen_puuids
 
-    with open(filepath, "r", encoding="utf-8") as fp:
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                raw = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            norm = normalize_checkpoint_row(raw, meta)
-            if not norm:
-                continue
-            row_key = (norm["match_id"], norm["puuid"], norm["champion_name"])
-            if row_key in seen_row_keys:
-                continue
-            seen_row_keys.add(row_key)
-            records.append(norm)
-            seen_match_ids.add(norm["match_id"])
-            if norm["puuid"]:
-                seen_puuids.add(norm["puuid"])
+    for path in candidate_files:
+        with _open_checkpoint_read(path) as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                norm = normalize_checkpoint_row(raw, meta)
+                if not norm:
+                    continue
+                row_key = (norm["match_id"], norm["puuid"], norm["champion_name"])
+                if row_key in seen_row_keys:
+                    continue
+                seen_row_keys.add(row_key)
+                records.append(norm)
+                seen_match_ids.add(norm["match_id"])
+                if norm["puuid"]:
+                    seen_puuids.add(norm["puuid"])
 
     log_print(
-        f"[체크포인트] '{filepath}' 로드 완료: {len(records):,}건 ({len(seen_match_ids):,}개 매치)"
+        f"[체크포인트] 로드 완료: {len(records):,}건 ({len(seen_match_ids):,}개 매치) <- {candidate_files}"
     )
+
+    # 기존 비압축 .jsonl 파일이 있었다면 .jsonl.gz로 통합 압축 저장 후 비압축 원본 삭제
+    if legacy_plain_path and os.path.exists(legacy_plain_path) and filepath.endswith(".gz"):
+        log_print(f"[자동 마이그레이션] '{legacy_plain_path}' -> '{filepath}' 압축 변환 중...")
+        save_checkpoint_compact(filepath, records)
+        try:
+            os.remove(legacy_plain_path)
+            log_print(f"[자동 마이그레이션] 기존 비압축 파일 '{legacy_plain_path}' 정리 완료")
+        except OSError as exc:
+            log_print(f"[경고] 비압축 원본 삭제 실패: {exc}")
+
     return records, seen_match_ids, seen_puuids
 
 
 def append_checkpoint(filepath: str, new_records: List[Dict[str, Any]]) -> None:
-    """신규 매치 레코드를 체크포인트 파일에 추가 기록합니다."""
+    """신규 매치 레코드를 체크포인트 파일에 추가 기록합니다 (.gz 지원)."""
     if not new_records:
         return
-    with open(filepath, "a", encoding="utf-8") as fp:
-        for r in new_records:
-            fp.write(json.dumps(r, ensure_ascii=False) + "\n")
+    if filepath.endswith(".gz"):
+        with gzip.open(filepath, "at", encoding="utf-8", compresslevel=6) as fp:
+            for r in new_records:
+                fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+    else:
+        with open(filepath, "a", encoding="utf-8") as fp:
+            for r in new_records:
+                fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
 # =============================================================================
@@ -850,11 +902,11 @@ def crawl_new_matches(
     existing_records: List[Dict[str, Any]],
     seen_match_ids: Set[str],
     seen_puuids: Set[str],
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], int]:
     api_key = str(config.get("api_key") or "").strip()
     if not api_key or api_key == "RGAPI-YOUR-KEY-HERE":
         log_print("[오류] 유효한 Riot API 키가 설정되지 않았습니다.")
-        return existing_records
+        return existing_records, 0
 
     client = RiotApiClient(api_key=api_key, routing_region=config.get("routing_region", "asia"))
     queue_puuids: deque = deque(list(seen_puuids)[:200])
@@ -912,7 +964,7 @@ def crawl_new_matches(
                 log_print(f"  -> 진행: 신규 {collected_matches}/{max_new} 매치 (누적 {len(existing_records):,}건)")
 
     log_print(f"[수집 완료] 신규 3v3 매치 {collected_matches}개 추가 (총 {len(existing_records):,}건)")
-    return existing_records
+    return existing_records, collected_matches
 
 
 # =============================================================================
@@ -1263,9 +1315,10 @@ def main() -> None:
 
     records, seen_match_ids, seen_puuids = load_checkpoint(checkpoint_path, meta)
 
+    new_collected = 0
     if not COLAB_CONFIG.get("aggregate_only", True):
         try:
-            records = crawl_new_matches(COLAB_CONFIG, meta, records, seen_match_ids, seen_puuids)
+            records, new_collected = crawl_new_matches(COLAB_CONFIG, meta, records, seen_match_ids, seen_puuids)
         except PermissionError as exc:
             log_print(
                 f"[인증 오류] {exc}\n"
@@ -1277,10 +1330,14 @@ def main() -> None:
     else:
         log_print("[재집계 모드] aggregate_only=True -> 체크포인트 즉시 재집계 진행")
 
+    # 신규 매치가 추가되었으면 단일 gzip 스트림으로 재압축해 용량을 최소화
+    if new_collected > 0 and checkpoint_path.endswith(".gz"):
+        save_checkpoint_compact(checkpoint_path, records)
+
     if not records:
         log_print(
             f"[안내] '{checkpoint_path}' 파일이 없거나 비어 있습니다.\n"
-            "  1) 기존 arena_3v3_checkpoint.jsonl을 업로드 후 실행하거나,\n"
+            "  1) 기존 arena_3v3_checkpoint.jsonl(.gz)을 업로드 후 실행하거나,\n"
             "  2) aggregate_only=False 및 Riot API 키 설정 후 신규 수집을 실행하세요."
         )
         return
