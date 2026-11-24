@@ -48,7 +48,7 @@
     }
     .prismatic-border {
       border: 1px solid rgba(192, 132, 252, 0.45);
-      box-shadow: 0 0 18px -8px rgba(192, 132, 252, 0.35);
+      box-shadow: 0 0 16px -8px rgba(192, 132, 252, 0.35);
     }
     @keyframes tooltipFadeIn {
       from { opacity: 0; transform: translateY(4px) scale(0.98); }
@@ -88,8 +88,6 @@
       Support: "서포터",
       Tank: "탱커"
     };
-
-    const ROLE_FILTER_LIST = ["전체", "전사", "마법사", "암살자", "원거리 딜러", "서포터", "탱커"];
 
     const OFFICIAL_AUGMENT_RARITY_KO = {
       // 프리즘
@@ -200,3 +198,1424 @@
           "상한 주의: 모자 효과는 최대 40개까지만 적용 (40개 초과 구매 금지)"
         ]
       },
+      "해트트릭": {
+        type: "augment", rarity: "골드",
+        tag: "필수 조합",
+        summary: "즉시 모자 3개를 획득하고 상점 카파 주스(모자) 가격이 대폭 할인(500g → 150g)됩니다.",
+        details: [
+          "핵심: 라운드에서 패배해도 모자를 잃지 않아 퀘스트 완료 후 모자 개수 유지 가능",
+          "저렴한 가격으로 빠르게 40개 상한까지 모자를 쌓을 수 있음"
+        ]
+      },
+      "주스 압착기": {
+        type: "augment", rarity: "실버",
+        tag: "팀 시너지",
+        summary: "본인과 팀원 모두 상점의 모든 주스 가격이 50% 할인되며, 카파 주스 구매 시 모자를 +1개 추가로 획득합니다.",
+        details: [
+          "팀원이 대신 먹어줘도 내 상점 할인과 추가 모자(+1) 효과가 그대로 적용",
+          "해트트릭과 겹치면 초저가로 1회당 모자 2개씩 양산 가능"
+        ]
+      },
+
+      // --- 자동화 플랜: 필수 프리즘 아이템 3종 ---
+      "번개 막대": {
+        type: "item", rarity: "프리즘", itemId: 447119,
+        tag: "필수 프리즘 ①",
+        stats: "체력 +500 · 방어력 +30 · 마법 저항력 +30 · 스킬 가속 +20",
+        summary: "보유한 모든 자동 사용 증강의 재사용 대기시간(발동 시간)에 스킬 가속이 적용됩니다.",
+        details: [
+          "증강 알고리즘 보정: 보유 시 이후 증강 선택 단계에서 자동 사용 증강 등장 확률이 상승",
+          "자동화 플랜의 시동이자 쿨타임 가속 핵심 아이템"
+        ]
+      },
+      "마공화살 동료": {
+        type: "item", rarity: "프리즘", itemId: 443081,
+        tag: "필수 프리즘 ②",
+        stats: "공격력 +70 · 공격 속도 +50% · 이동 속도 +6%",
+        summary: "[지원 사격] 10초마다 자동 사용 화살 발사 / [방출] 충전 상태로 공격 시 보유한 모든 자동 사용 효과가 즉시 발동합니다.",
+        details: [
+          "자동 사용 증강의 쿨타임을 무시하고 충전 발동마다 강제로 연쇄 발동",
+          "룬 조각기와 함께 갖춰지면 평타 없이 스킬만 맞춰도 자동 사용이 무한 발동"
+        ]
+      },
+      "룬 조각기": {
+        type: "item", rarity: "프리즘", itemId: 447108,
+        tag: "필수 프리즘 ③",
+        stats: "주문력 +80 · 스킬 가속 +20 · 이동 속도 +4%",
+        summary: "[나선] 이동·평타·스킬 피해 시 충전 상태가 30 쌓이고 준비되면 스킬로도 충전 행동이 발동합니다. [소용돌이] 발동마다 라운드 종료까지 룬 중첩을 얻어 발사체로 마법 피해를 입힙니다.",
+        details: [
+          "마공화살 동료 연계: 스킬 적중만으로 충전 발동 → 자동 사용 증강 강제 발동 연쇄",
+          "도트(지속 피해) 및 짧은 쿨타임 스킬 챔피언에게 압도적 효율"
+        ]
+      },
+
+      // --- 자동화 플랜: 핵심 딜링 증강 ---
+      "양자 연산": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 물관 적용",
+        summary: "주기적으로 주변 650 범위를 원형으로 베어 물리 피해를 입히고, 바깥쪽 적중 시 최대 체력 비례 추가 피해·둔화 및 체력 회복을 얻습니다.",
+        details: [
+          "관통력 적용: 물리 피해 판정이므로 물리 관통력(물관·방관)에 따라 딜량 상승",
+          "★ 3레벨(최대 레벨) 효과: 모든 자동 사용 효과가 25% / 10% / 1% 확률로 최대 4회 다중 발동!"
+        ]
+      },
+      "야생 불꽃": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 마관 적용",
+        summary: "주기적으로 근처 적들 사이를 튕기는 불덩이를 자동 시전해 마법 피해를 입힙니다.",
+        details: [
+          "관통력 적용: 마법 피해 판정이므로 마법 관통력(마관)에 따라 딜량 상승",
+          "★ 3레벨(최대 레벨) 효과: 시전할 때마다 최대 튕김 횟수가 +1씩 무한 증가",
+          "무한 루프 엔진: 스킬 피해 판정으로 룬 조각기를 발동시켜 마공화살 동료와 무한 순환"
+        ]
+      },
+
+      // --- 자동화 플랜: 보조 자동 사용 증강 ---
+      "신성한 중재": {
+        type: "augment", rarity: "골드",
+        tag: "보조 자동 사용",
+        summary: "일정 시간 후 자신과 주변 아군에게 잠시 동안 무적(타릭 R)을 자동 시전합니다.",
+        details: ["자동화 루프가 예열되는 시간을 벌어주며 3v3 한타에서 압도적인 변수 창출"]
+      },
+      "늘어나는 팔": {
+        type: "augment", rarity: "골드", aliases: ["로켓 팔"],
+        tag: "보조 자동 사용",
+        summary: "주기적으로 주변 적에게 블리츠크랭크 로켓 손을 자동 발사해 끌어옵니다.",
+        details: ["도망치는 적을 사거리 안으로 강제 소환해 양자 연산·야생 불꽃·룬 조각기를 끊김 없이 적중"]
+      },
+      "점액 천지": {
+        type: "augment", rarity: "실버",
+        tag: "보조 자동 사용 · 룬 조각기 발동",
+        summary: "주기적으로 주변에 점액을 터뜨려 최대 체력 비례 마법 피해를 입히고 회복 방울을 생성합니다.",
+        details: ["실버 등급이면서도 스킬 피해 판정으로 룬 조각기를 발동시키는 가성비 핵심 파츠"]
+      },
+
+      // --- 자동화 플랜: 충전 스택 가속 파츠 ---
+      "질책": {
+        type: "item", rarity: "프리즘", itemId: 443055,
+        tag: "충전 가속 프리즘",
+        stats: "공격력 +55 · 공격 속도 +45% · 이동 속도 +15%",
+        summary: "충전 상태 효과를 강화하고 연쇄 발동을 돕는 프리즘 아이템입니다.",
+        details: ["마공화살 동료·룬 조각기와 함께 충전 스택 회전율을 압도적으로 끌어올림"]
+      },
+      "벼락폭풍검": {
+        type: "item", rarity: "전설", itemId: 6699, aliases: ["벼폭검"],
+        tag: "충전 가속 코어",
+        stats: "공격력 · 물리 관통력 · 스킬 가속",
+        summary: "돌진 및 은신 시 충전 상태가 훨씬 빠르게 쌓이고, 충전 공격 시 추가 물리 피해와 둔화를 적용합니다.",
+        details: ["충전 스택을 폭발적으로 채워 마공화살 동료 발동 주기를 단축 (양자 연산 물관 보너스까지 시너지)"]
+      },
+      "스태틱의 단검": {
+        type: "item", rarity: "전설", itemId: 3087, aliases: ["스태틱"],
+        tag: "충전 가속 코어",
+        stats: "공격력 · 공격 속도 · 이동 속도",
+        summary: "높은 공격 속도와 이동 속도를 바탕으로 충전 및 연쇄 번개 피해를 빠르게 터뜨립니다.",
+        details: ["충전 스택 수급 속도를 크게 끌어올려 자동 사용 연쇄 발동을 보조"]
+      },
+      "불여우": {
+        type: "augment", rarity: "실버", aliases: ["여우불"],
+        tag: "충전 가속 · 룬 조각기 발동",
+        summary: "주기적으로 주변 적을 추적하는 여우불 3개를 자동 시전해 마법 피해를 입힙니다.",
+        details: ["스킬 피해 판정으로 룬 조각기의 충전 스택을 폭발적으로 쌓아 무한 루프를 가속"]
+      },
+      "에너지 충전": {
+        type: "augment", rarity: "실버",
+        tag: "충전 속도 압도적",
+        summary: "이동 및 공격으로 충전 상태가 쌓이는 속도가 대폭 증가합니다.",
+        details: ["룬 조각기·마공화살 동료와 함께 자동화 무한 루프를 완성하는 최우선 실버 증강"]
+      },
+      "감바 모루": {
+        type: "augment", rarity: "프리즘",
+        tag: "진입 조건 추천",
+        summary: "능력치 모루와 아이템 모루(프리즘 모루 포함) 가격이 크게 할인됩니다.",
+        details: ["프리즘 3종이 필요한 자동화 플랜의 막대한 골드 부담을 획기적으로 줄여줌"]
+      },
+
+      // --- 4번 플랜: 검무 + 대지의 각성 + 소환사 혁명 ---
+      "검무": {
+        type: "augment", rarity: "프리즘",
+        tag: "핵심 딜링 · 물관 적용",
+        summary: "소환사 주문으로 지정 불가 상태가 되어 적들 사이를 빠르게 순간이동하며 연속 물리 타격을 가합니다.",
+        details: [
+          "관통력 적용: 물리 피해 판정이므로 물리 관통력(물관·방관)에 따라 딜량 상승",
+          "킨코우 십수(킨코우 살수)와 함께 사용 시 약점 타격이 연쇄 발동해 효율 극대화"
+        ]
+      },
+      "킨코우 십수": {
+        type: "item", rarity: "프리즘", itemId: 447116, aliases: ["킨코우 살수"],
+        tag: "검무 핵심 시너지",
+        stats: "공격력 · 물리 관통력 · 이동 속도",
+        summary: "적 주변에 급소(약점)를 표시하고, 급소 방향에서 타격 시 최대 체력 비례 추가 고정 피해와 이동 속도를 얻습니다.",
+        details: ["검무 시전 중 적 주위를 빠르게 순간이동하며 타격할 때 급소가 연쇄적으로 터져 폭발적 시너지"]
+      },
+      "대지의 각성": {
+        type: "augment", rarity: "프리즘",
+        tag: "필수 콤보 파츠",
+        summary: "돌진·점멸·순간이동 시 이동 경로에 폭발을 일으켜 광역 물리 피해를 입힙니다.",
+        details: ["검무 시전 중 발생하는 모든 연속 순간이동마다 폭발이 연쇄 발동해 적 팀을 순식간에 녹임"]
+      },
+      "소환사 혁명": {
+        type: "augment", rarity: "골드",
+        tag: "2연속 콤보 완성",
+        summary: "소환사 주문을 한 번 더 사용할 수 있습니다.",
+        details: ["소환사 주문 슬롯에 들어가는 검무를 2연속 시전해 검무+대지의 각성 폭딜을 2배로 터뜨림"]
+      },
+
+      // --- 5번 플랜: 거인의 결의 ---
+      "거인의 결의": {
+        type: "augment", rarity: "프리즘",
+        tag: "원거리 사거리 증가",
+        summary: "적중 시 스택이 쌓여 기본 능력치(적응형 능력치·방마저·강인함)와 함께 공격 사거리까지 증가합니다.",
+        details: [
+          "원거리 챔피언이 확보 시 안전하게 스택을 쌓고 사거리 증가 이점을 극대화 가능",
+          "적중 시 효과(온힛) 발동 횟수에 따라 스택이 훨씬 빠르게 누적됨"
+        ]
+      },
+      "양손잡이": {
+        type: "augment", rarity: "프리즘",
+        tag: "온힛 스택 가속",
+        summary: "공격 속도 상한이 해제되고 공격 속도가 대폭 상승하는 대신 피해량이 소폭 조정됩니다.",
+        details: ["압도적인 공속으로 거인의 결의 적중 시 스택을 순식간에 누적"]
+      },
+      "탄환 세례": {
+        type: "augment", rarity: "프리즘",
+        tag: "온힛 스택 가속",
+        summary: "공격 속도가 크게 증가하고 평타가 연사 형태로 강화됩니다.",
+        details: ["타수가 폭발적으로 늘어나 거인의 결의 스택을 빠르게 쌓는 핵심 프리즘 증강"]
+      },
+      "두 배 세 배": {
+        type: "augment", rarity: "골드",
+        tag: "온힛 스택 가속",
+        summary: "매 3번째 기본 공격마다 적중 시 효과가 2번 발동합니다.",
+        details: ["구인수의 격노검과 시너지를 내며 거인의 결의 스택 누적 속도를 크게 끌어올림"]
+      },
+      "구인수의 격노검": {
+        type: "item", rarity: "전설", itemId: 3124, aliases: ["구인수"],
+        tag: "필수 코어",
+        stats: "공격력 · 주문력 · 공격 속도 · 환영 타격",
+        summary: "기본 공격 시 적중 시 효과가 추가로 발동(환영 타격)합니다.",
+        details: ["거인의 결의 스택을 가장 빠르게 쌓는 필수 1코어. 이후에는 버티기 위한 탱템 위주 빌드 추천"]
+      }
+    };
+
+    const COMMON_WIN_PLANS = [
+      {
+        id: "curse",
+        num: "01",
+        icon: "☠️",
+        title: "저주 증강 플랜",
+        subtitle: "팀원 시너지로 라운드당 스택 상한을 끌어올리는 후반 왕귀형",
+        accent: "from-purple-500/20 to-fuchsia-500/5 border-purple-400/40",
+        badges: ["저주 증강 6종", "팀 시너지 핵심", "초반 스택 누적"],
+        sections: [
+          {
+            heading: "저주 증강 전체 목록 6종 (스택 조건 & 보상 능력치)",
+            entities: ["파멸의 예언자", "공포를 부르는 자", "어둠의 축복", "죽음의 손길", "신성 모독자", "침탈"],
+            bullets: [
+              "파멸의 예언자 (프리즘): 적 챔피언에게 스킬 적중 시 스택 → 적응형 능력치 획득",
+              "공포를 부르는 자 (프리즘): 주변 오라로 지속 스택 → 최대 체력 획득",
+              "어둠의 축복 (골드): 회복·보호막 부여 시 스택 → 스킬 가속 획득",
+              "죽음의 손길 (골드): 적 챔피언 기본 공격 적중 시 스택 → 적중 시 추가 마법 피해 획득",
+              "신성 모독자 (실버): 적 이동 불가(CC) 적중 시 스택 → 방어력·마법 저항력 획득",
+              "침탈 (실버): 주변 적 존재 시 돌진·순간이동 시 스택 → 이동 속도 획득"
+            ]
+          },
+          {
+            heading: "라운드당 스택 상한 & 파멸의 예언자 선택 타이밍",
+            bullets: [
+              "라운드당 기본 저주 스택 상한은 50이며, 본인과 팀원이 보유한 저주 증강 1개당 상한이 +10씩 증가합니다.",
+              "파멸의 예언자(파멸의 저주)는 1번째 증강으로 단독 선택 시 스택 누적이 까다로우므로 비추천하며, 이미 스택이 쌓인 중·후반에 집는 것이 훨씬 좋습니다."
+            ]
+          }
+        ]
+      },
+      {
+        id: "hatter",
+        num: "02",
+        icon: "🎩",
+        title: "모자장수 플랜",
+        subtitle: "해트트릭으로 모자 손실을 막고 40개 상한까지 스탯을 폭발시키는 퀘스트 조합",
+        accent: "from-amber-500/20 to-yellow-500/5 border-amber-400/45",
+        badges: ["해트트릭 필수", "최대 40개 상한", "퀘스트 완성형"],
+        sections: [
+          {
+            heading: "필수 조합 & 팀 시너지",
+            entities: ["퀘스트: 미치광이 모자장수", "해트트릭", "주스 압착기"],
+            bullets: [
+              "모자장수 플랜은 반드시 「해트트릭」과 「퀘스트: 미치광이 모자장수」 증강을 함께 먹어야 완성됩니다.",
+              "해트트릭을 먹으면 라운드 패배 시에도 모자를 잃지 않아 퀘스트 완료 후 모자 개수를 안정적으로 유지할 수 있고, 상점에서 모자를 훨씬 저렴하게 살 수 있습니다.",
+              "주스 압착기를 함께 챙기면 팀원 시너지 및 할인·추가 모자 효과로 모자 수급 속도가 빨라집니다."
+            ]
+          },
+          {
+            heading: "골드 낭비 주의 (상한 40개)",
+            warning: "모자는 최대 40개까지만 적용됩니다! 40개를 초과해서 사면 스탯은 오르지 않고 골드만 빠져나가므로, 40개 달성 이후에는 모자 구매를 멈추세요."
+          }
+        ]
+      },
+      {
+        id: "autocast",
+        num: "03",
+        icon: "⚡",
+        title: "자동화 플랜",
+        subtitle: "번개 막대 · 마공화살 동료 · 룬 조각기 3종 프리즘으로 자동 사용 무한 루프 완성",
+        accent: "from-cyan-500/20 to-sky-500/5 border-cyan-400/45",
+        badges: ["프리즘 3종 필수", "저점 낮음 · 고점 최상", "3레벨 무한 루프"],
+        sections: [
+          {
+            heading: "필수 프리즘 아이템 3종",
+            entities: ["번개 막대", "마공화살 동료", "룬 조각기"],
+            bullets: [
+              "번개 막대: 자동 사용 발동 시간에 스킬 가속이 적용되며, 먹으면 증강 선택 단계에서 알고리즘을 타서 자동 사용 증강이 뜰 확률이 올라갑니다.",
+              "마공화살 동료 (필수): 충전 상태 공격 시 자동 사용이 즉시 발동되는 효과를 가지고 있어 자동화 플랜에서 필수입니다.",
+              "룬 조각기: 스킬 피해로 충전 상태를 쌓고 발동시켜 마공화살 동료와 결합하면 평타 없이 스킬만 맞춰도 자동 사용이 연쇄 발동합니다. (도트·짧은 쿨 스킬 효율 우수)"
+            ]
+          },
+          {
+            heading: "핵심 딜링 자동 사용 증강 (3레벨 효과 필수 체크)",
+            entities: ["양자 연산", "야생 불꽃"],
+            bullets: [
+              "양자 연산 (물리 관통력 적용): 3레벨 달성 시 모든 자동 사용 효과가 25% / 10% / 1% 확률로 최대 4회 다중 발동합니다.",
+              "야생 불꽃 (마법 관통력 적용): 3레벨 달성 시 시전할 때마다 최대 튕김 횟수가 +1씩 증가하며, 스킬 피해 판정으로 룬 조각기를 발동시켜 무한 루프의 핵심이 됩니다."
+            ]
+          },
+          {
+            heading: "추천 보조 자동 사용 증강",
+            entities: ["신성한 중재", "늘어나는 팔", "점액 천지"],
+            bullets: [
+              "신성한 중재: 자동 무적 시전으로 예열 시간 확보 및 3v3 변수 창출",
+              "늘어나는 팔 (로켓 팔): 적을 끌어와 자동 사용 딜링을 끊김 없이 적중",
+              "점액 천지: 실버 등급이면서도 룬 조각기를 발동시키는 가성비 파츠"
+            ]
+          },
+          {
+            heading: "충전 스택 가속 파츠 (아이템 · 증강)",
+            entities: ["질책", "벼락폭풍검", "스태틱의 단검", "불여우", "에너지 충전"],
+            bullets: [
+              "아이템: 질책(프리즘), 벼락폭풍검(벼폭검), 스태틱의 단검(스태틱)으로 충전 스택 회전율 극대화",
+              "증강: 불여우(여우불)와 에너지 충전이 압도적인 충전 효율을 보여줍니다."
+            ]
+          },
+          {
+            heading: "주의점 & 각 보는 타이밍",
+            entities: ["감바 모루"],
+            warning: "프리즘 아이템 3개가 필수라 돈이 많이 필요하므로, 이블린·오른 등 고점을 볼 수 있는 조우자나 감바 모루를 먹었을 때 하는 게 좋습니다. 무지성으로 하면 일찍 탈락할 확률이 높습니다. (저점은 낮지만 고점은 높음)"
+          }
+        ]
+      },
+      {
+        id: "bladewaltz",
+        num: "04",
+        icon: "⚔️",
+        title: "검무 + 대지의 각성 + 소환사 혁명 플랜",
+        subtitle: "지정 불가 연속 순간이동 폭발을 2연속으로 꽂아 넣는 원콤 암살 플랜",
+        accent: "from-rose-500/20 to-orange-500/5 border-rose-400/45",
+        badges: ["물리 관통력 적용", "킨코우 십수 시너지", "2연속 폭딜"],
+        sections: [
+          {
+            heading: "핵심 3종 증강 & 추천 프리즘 아이템",
+            entities: ["검무", "킨코우 십수", "대지의 각성", "소환사 혁명"],
+            bullets: [
+              "검무 (물리 관통력 적용): 지정 불가 상태로 순간이동하며 연속 타격하며, 킨코우 십수(킨코우 살수) 프리즘 아이템과 연계 효율이 매우 좋습니다.",
+              "대지의 각성: 검무 시전 중 연속 순간이동마다 광역 폭발이 연쇄 발동해 강력한 폭딜을 넣습니다.",
+              "소환사 혁명: 소환사 주문을 한 번 더 사용할 수 있게 해 줘 검무 + 대지의 각성 콤보를 2연속으로 터뜨릴 수 있습니다."
+            ]
+          }
+        ]
+      },
+      {
+        id: "titans",
+        num: "05",
+        icon: "🗿",
+        title: "거인의 결의 플랜",
+        subtitle: "원거리 챔피언의 사거리 증가 + 적중 시 효과(온힛) 고속 스택 누적 플랜",
+        accent: "from-emerald-500/20 to-teal-500/5 border-emerald-400/45",
+        badges: ["원거리 추천", "사거리 증가", "구인수 + 탱템"],
+        sections: [
+          {
+            heading: "핵심 증강 & 온힛 스택 가속 파츠",
+            entities: ["거인의 결의", "양손잡이", "탄환 세례", "두 배 세 배"],
+            bullets: [
+              "거인의 결의는 스택이 쌓이면 기본 스탯뿐만 아니라 사거리 증가도 되기 때문에 원거리 챔피언이 먹었을 때 스택 쌓기가 쉬워서 좋습니다.",
+              "스택이 적중 시 효과에 따라 빨리 쌓이기 때문에 양손잡이, 탄환 세례, 두 배 세 배 같은 증강들과 시너지가 뛰어납니다."
+            ]
+          },
+          {
+            heading: "추천 아이템 빌드 (구인수 + 생존 탱템)",
+            entities: ["구인수의 격노검"],
+            bullets: [
+              "아이템은 구인수(구인수의 격노검) + 일정 스택을 쌓기까지 버티기 위한 탱템을 올리는 게 좋습니다."
+            ]
+          }
+        ]
+      }
+    ];
+
+    // =========================================================================
+    // 3. 애플리케이션 상태 & 헬퍼 함수
+    // =========================================================================
+    const state = {
+      viewMode: "plans",
+      selectedPlanId: "ALL",
+      activeTooltipKey: null,
+
+      rawChampionsData: {},
+      uploadedFileName: "",
+      autoLoadState: "loading",
+      lastSyncedAt: "",
+      toastMsg: null,
+
+      ddVersion: FALLBACK_DD_VERSION,
+      ddChampionsMap: {},
+      ddItemNameMap: {},
+      ddPrismaticItemIdMap: {},
+      cdAugmentMetaMap: {},
+      cdItemIconMap: {},
+      cdPrismaticIconMap: {},
+      ddSyncState: "loading",
+
+      selectedChampKey: "",
+      activeTab: "build",
+      searchQuery: "",
+      roleFilter: "전체",
+      tierFilter: "전체",
+      onlyRealData: true,
+      selectedPatch: "ALL",
+      rarityFilter: "전체",
+      augmentSort: "composite"
+    };
+
+    const escapeHtml = (str) =>
+      String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const normalizeAugmentName = (rawName) => {
+      const n = String(rawName || "").trim();
+      return AUGMENT_NAME_CORRECTIONS[n] || n;
+    };
+
+    const normalizeCDragonAsset = (rawPath) => {
+      if (!rawPath) return "";
+      const trimmed = String(rawPath).trim();
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+      let cleaned = trimmed.toLowerCase();
+      if (cleaned.startsWith("/lol-game-data/assets/")) {
+        cleaned = cleaned.slice("/lol-game-data/assets/".length);
+      } else if (cleaned.startsWith("lol-game-data/assets/")) {
+        cleaned = cleaned.slice("lol-game-data/assets/".length);
+      }
+      return CDRAGON_ASSET_PREFIX + cleaned.replace(/^\/+/, "");
+    };
+
+    const calibrateNumericRarityMap = (rawAugs = []) => {
+      const votes = {};
+      const numSet = new Set();
+      rawAugs.forEach((a) => {
+        if (typeof a?.rarity !== "number") return;
+        const code = a.rarity;
+        numSet.add(code);
+        const name = normalizeAugmentName(a.nameTRA || a.name || "");
+        const known = OFFICIAL_AUGMENT_RARITY_KO[name];
+        if (known) {
+          if (!votes[code]) votes[code] = { 실버: 0, 골드: 0, 프리즘: 0 };
+          votes[code][known] += 1;
+        }
+      });
+      const result = {};
+      Object.entries(votes).forEach(([code, counts]) => {
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (best && best[1] > 0) result[Number(code)] = best[0];
+      });
+      const sorted = Array.from(numSet).sort((a, b) => a - b);
+      if (Object.keys(result).length < 3 && sorted.length >= 3) {
+        if (numSet.has(4) && numSet.has(8)) {
+          if (!result[0]) result[0] = "실버";
+          if (!result[1]) result[1] = "실버";
+          if (!result[4]) result[4] = "골드";
+          if (!result[8]) result[8] = "프리즘";
+        } else {
+          if (!result[sorted[0]]) result[sorted[0]] = "실버";
+          if (!result[sorted[1]]) result[sorted[1]] = "골드";
+          if (!result[sorted[2]]) result[sorted[2]] = "프리즘";
+        }
+      }
+      return result;
+    };
+
+    const resolveOfficialRarity = (rawRarity, augName = "", numMap = {}) => {
+      const cleanName = normalizeAugmentName(augName);
+      if (OFFICIAL_AUGMENT_RARITY_KO[cleanName]) return OFFICIAL_AUGMENT_RARITY_KO[cleanName];
+      if (typeof rawRarity === "string") {
+        const lower = rawRarity.trim().toLowerCase();
+        if (lower.includes("prism") || lower.includes("프리즘")) return "프리즘";
+        if (lower.includes("gold") || lower.includes("골드")) return "골드";
+        if (lower.includes("silver") || lower.includes("실버")) return "실버";
+        const asNum = Number(lower);
+        if (Number.isFinite(asNum)) {
+          if (numMap[asNum]) return numMap[asNum];
+          if (asNum === 2 || asNum === 8) return "프리즘";
+          if (asNum === 1 || asNum === 4) return "골드";
+          return "실버";
+        }
+      }
+      if (typeof rawRarity === "number") {
+        if (numMap[rawRarity]) return numMap[rawRarity];
+        if (rawRarity === 2 || rawRarity === 8) return "프리즘";
+        if (rawRarity === 1 || rawRarity === 4) return "골드";
+        return "실버";
+      }
+      return "실버";
+    };
+
+    const getEntityIcons = (name) => {
+      const meta = PLAN_ENTITY_TOOLTIPS[name] || { type: "augment", rarity: "프리즘" };
+      const candidates = [name, ...(meta.aliases || [])];
+      if (meta.type === "item") {
+        const isPrismatic = meta.rarity === "프리즘";
+        let cdIcon = "";
+        let ddId = meta.itemId || null;
+        for (const c of candidates) {
+          if (!cdIcon) {
+            cdIcon = isPrismatic
+              ? (state.cdPrismaticIconMap[c] || state.cdItemIconMap[c] || "")
+              : (state.cdItemIconMap[c] || "");
+          }
+          if (!ddId) {
+            ddId = isPrismatic
+              ? (state.ddPrismaticItemIdMap[c] || state.ddItemNameMap[c] || null)
+              : (state.ddItemNameMap[c] || null);
+          }
+        }
+        const ddIcon = ddId ? DD_ITEM_IMG(ddId, state.ddVersion) : "";
+        return {
+          primary: ddIcon || cdIcon,
+          fallback: ddIcon && cdIcon && ddIcon !== cdIcon ? cdIcon : ""
+        };
+      }
+      let augIcon = "";
+      for (const c of candidates) {
+        const fixed = normalizeAugmentName(c);
+        if (state.cdAugmentMetaMap[fixed]?.icon) {
+          augIcon = state.cdAugmentMetaMap[fixed].icon;
+          break;
+        }
+      }
+      return { primary: augIcon, fallback: "" };
+    };
+
+    const getTierNum = (tier, explicitNum = null) => {
+      if (explicitNum && explicitNum >= 1 && explicitNum <= 4) return explicitNum;
+      if (tier === "S") return 1;
+      if (tier === "A") return 2;
+      if (tier === "B") return 3;
+      if (tier === "C") return 4;
+      return 0;
+    };
+
+    const getTierBadgeMeta = (tierNum) => {
+      if (tierNum === 1) return { label: "1티어", cls: "bg-sky-500/20 text-sky-300 border-sky-400/50", solid: "bg-sky-500 text-slate-950 border-sky-300" };
+      if (tierNum === 2) return { label: "2티어", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-400/50", solid: "bg-emerald-500 text-slate-950 border-emerald-300" };
+      if (tierNum === 3) return { label: "3티어", cls: "bg-amber-500/20 text-amber-300 border-amber-400/45", solid: "bg-amber-500 text-slate-950 border-amber-300" };
+      if (tierNum === 4) return { label: "4티어", cls: "bg-rose-500/15 text-rose-300 border-rose-500/40", solid: "bg-rose-500 text-white border-rose-300" };
+      return { label: "-", cls: "bg-slate-800 text-slate-500 border-slate-700", solid: "bg-slate-700 text-slate-300 border-slate-600" };
+    };
+
+    const getRarityPillCls = (rarity) => {
+      if (rarity === "프리즘") return "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50";
+      if (rarity === "골드") return "bg-amber-500/20 text-amber-200 border-amber-400/50";
+      return "bg-slate-600/30 text-slate-200 border-slate-400/45";
+    };
+
+    const resolveLatestItemIcon = (item, isPrismatic = false) => {
+      const name = String(item?.name || "").trim();
+      const rawId = Number(item?.id || 0);
+      if (isPrismatic) {
+        const prismId = (rawId >= 440000 && rawId < 450000) ? rawId : (state.ddPrismaticItemIdMap[name] || 0);
+        if (prismId) return DD_ITEM_IMG(prismId, state.ddVersion);
+        return state.cdPrismaticIconMap[name] || state.cdItemIconMap[name] || item?.icon || item?.icon_url || "";
+      }
+      const mappedId = (rawId >= 1000 && rawId < 7000) ? rawId : (state.ddItemNameMap[name] || rawId);
+      if (mappedId) return DD_ITEM_IMG(mappedId, state.ddVersion);
+      return state.cdItemIconMap[name] || item?.icon || item?.icon_url || "";
+    };
+
+    const computePatchFilteredSummary = (champ, selectedPatch, allPatchesDesc) => {
+      if (!champ?.hasRealData) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+      const patchStats = champ.patch_stats || {};
+      const patchKeys = Object.keys(patchStats);
+      if (patchKeys.length === 0) {
+        const s = champ.summary || {};
+        const picks = Number(s.picks || 0);
+        const avg = Number(s.avg_placement ?? 3.5);
+        const bp = Number(s.bayes_placement ?? (picks * avg + 25 * 3.5) / (picks + 25));
+        const tier = picks < 20 ? "B" : bp <= 3.32 ? "S" : bp <= 3.46 ? "A" : bp <= 3.6 ? "B" : "C";
+        return {
+          tier,
+          tier_num: getTierNum(tier, s.tier_num ?? s.opgg_tier),
+          picks,
+          avg_placement: Number(avg.toFixed(2)),
+          bayes_placement: Number(bp.toFixed(2)),
+          top3_rate: Number((s.top3_rate ?? 50).toFixed(1)),
+          win_rate: Number((s.win_rate ?? 16.7).toFixed(1)),
+          avg_damage: Math.round(s.avg_damage || 0)
+        };
+      }
+
+      const weightCurve = [1.0, 0.75, 0.5, 0.35, 0.25];
+      const patchWeightMap = {};
+      allPatchesDesc.forEach((p, i) => {
+        patchWeightMap[p] = weightCurve[Math.min(i, weightCurve.length - 1)];
+      });
+
+      const targetKeys = selectedPatch === "ALL" ? patchKeys : patchStats[selectedPatch] ? [selectedPatch] : [];
+      if (targetKeys.length === 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      let rawTotalPicks = 0, weightedPicksSum = 0, weightedPlaceSum = 0, weightedTop3Sum = 0, weightedWinSum = 0, weightedDmgSum = 0;
+      targetKeys.forEach((pKey) => {
+        const st = patchStats[pKey];
+        const n = Number(st.picks || 0);
+        if (n <= 0) return;
+        const w = selectedPatch === "ALL" ? patchWeightMap[pKey] ?? 0.5 : 1.0;
+        const effN = n * w;
+        rawTotalPicks += n;
+        weightedPicksSum += effN;
+        weightedPlaceSum += Number(st.avg_placement || 3.5) * effN;
+        weightedTop3Sum += Number(st.top3_rate || 50) * effN;
+        weightedWinSum += Number(st.win_rate || 16.7) * effN;
+        weightedDmgSum += Number(st.avg_damage || 0) * effN;
+      });
+
+      if (rawTotalPicks === 0 || weightedPicksSum <= 0) {
+        return { tier: "-", tier_num: 0, picks: 0, avg_placement: "-", bayes_placement: 9.99, top3_rate: "-", win_rate: "-", avg_damage: 0 };
+      }
+
+      const avgPlacement = Number((weightedPlaceSum / weightedPicksSum).toFixed(2));
+      const bayesPlacement = Number(((weightedPicksSum * avgPlacement + 25 * 3.5) / (weightedPicksSum + 25)).toFixed(2));
+      const top3Rate = Number((weightedTop3Sum / weightedPicksSum).toFixed(1));
+      const winRate = Number((weightedWinSum / weightedPicksSum).toFixed(1));
+      const avgDamage = Math.round(weightedDmgSum / weightedPicksSum);
+      const tier = rawTotalPicks < 20 ? "B" : bayesPlacement <= 3.32 ? "S" : bayesPlacement <= 3.46 ? "A" : bayesPlacement <= 3.6 ? "B" : "C";
+
+      return {
+        tier,
+        tier_num: getTierNum(tier, champ.summary?.tier_num ?? champ.summary?.opgg_tier),
+        picks: rawTotalPicks,
+        avg_placement: avgPlacement,
+        bayes_placement: bayesPlacement,
+        top3_rate: top3Rate,
+        win_rate: winRate,
+        avg_damage: avgDamage
+      };
+    };
+
+    const setToast = (type, text) => {
+      state.toastMsg = { type, text };
+      render();
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        state.toastMsg = null;
+        render();
+      }, 4500);
+    };
+
+    // =========================================================================
+    // 4. HTML 렌더링 함수
+    // =========================================================================
+    function renderEntityBadgeHtml(name, uniqueKey) {
+      const meta = PLAN_ENTITY_TOOLTIPS[name] || {
+        type: "augment",
+        rarity: "프리즘",
+        summary: "아레나 3v3 공용 플랜 시너지 파츠입니다.",
+        details: []
+      };
+      const icons = getEntityIcons(name);
+      const isOpen = state.activeTooltipKey === uniqueKey;
+
+      const borderTone =
+        meta.rarity === "프리즘"
+          ? "border-fuchsia-400/55 bg-fuchsia-950/35 hover:border-fuchsia-300"
+          : meta.rarity === "골드"
+            ? "border-amber-400/50 bg-amber-950/30 hover:border-amber-300"
+            : meta.rarity === "전설"
+              ? "border-cyan-400/50 bg-cyan-950/30 hover:border-cyan-300"
+              : "border-slate-500/55 bg-slate-800/60 hover:border-slate-300";
+
+      const badgeTone =
+        meta.rarity === "프리즘"
+          ? "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/50"
+          : meta.rarity === "골드"
+            ? "bg-amber-500/20 text-amber-200 border-amber-400/50"
+            : meta.rarity === "전설"
+              ? "bg-cyan-500/20 text-cyan-200 border-cyan-400/45"
+              : "bg-slate-600/30 text-slate-200 border-slate-400/45";
+
+      const emoji = meta.type === "item" ? "💎" : meta.rarity === "프리즘" ? "💠" : meta.rarity === "골드" ? "🌟" : "🔹";
+
+      return `
+        <div class="relative inline-block" data-tooltip-wrap="${escapeHtml(uniqueKey)}">
+          <button
+            type="button"
+            data-action="toggle-tooltip"
+            data-tooltip-key="${escapeHtml(uniqueKey)}"
+            class="group flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl border transition-all text-left shadow-sm ${borderTone}"
+          >
+            ${
+              icons.primary
+                ? `<img src="${escapeHtml(icons.primary)}" data-fallback="${escapeHtml(icons.fallback)}" data-emoji="${emoji}" alt="${escapeHtml(name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700/80 object-cover bg-slate-900 shrink-0" onerror="handleImgErr(this)" />`
+                : `<span class="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-sm shrink-0">${emoji}</span>`
+            }
+            <div class="leading-tight">
+              <div class="text-xs font-extrabold text-white group-hover:text-hextech-goldLight transition-colors">${escapeHtml(name)}</div>
+              <div class="text-[10px] text-slate-400 font-semibold">${escapeHtml(meta.rarity)} ${meta.type === "item" ? "아이템" : "증강"}${meta.tag ? ` · ${escapeHtml(meta.tag)}` : ""}</div>
+            </div>
+          </button>
+
+          ${
+            isOpen
+              ? `
+                <div role="tooltip" class="tooltip-pop fixed sm:absolute z-50 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 bottom-4 sm:bottom-full sm:mb-2.5 sm:w-[340px] rounded-2xl bg-slate-950/98 border border-hextech-gold/60 shadow-2xl p-4 backdrop-blur-xl">
+                  <div class="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800">
+                    <div class="flex items-start gap-3 min-w-0">
+                      ${
+                        icons.primary
+                          ? `<img src="${escapeHtml(icons.primary)}" data-fallback="${escapeHtml(icons.fallback)}" data-emoji="${emoji}" alt="${escapeHtml(name)}" class="w-11 h-11 rounded-xl border border-hextech-gold/50 object-cover bg-slate-900 shrink-0" onerror="handleImgErr(this)" />`
+                          : `<span class="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-lg shrink-0">${emoji}</span>`
+                      }
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="text-sm font-black text-white">${escapeHtml(name)}</span>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold border ${badgeTone}">${escapeHtml(meta.rarity)} ${meta.type === "item" ? "아이템" : "증강"}</span>
+                        </div>
+                        ${meta.stats ? `<div class="text-[11px] font-semibold text-hextech-cyan mt-1">${escapeHtml(meta.stats)}</div>` : ""}
+                        ${!meta.stats && meta.tag ? `<div class="text-[11px] font-semibold text-hextech-goldLight mt-1">${escapeHtml(meta.tag)}</div>` : ""}
+                      </div>
+                    </div>
+                    <button type="button" data-action="close-tooltip" class="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5">✕</button>
+                  </div>
+                  <div class="pt-2.5 space-y-2 text-xs leading-relaxed text-slate-200">
+                    <p>${escapeHtml(meta.summary)}</p>
+                    ${
+                      meta.details && meta.details.length > 0
+                        ? `<ul class="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                            ${meta.details
+                              .map(
+                                (line) =>
+                                  `<li class="flex items-start gap-1.5 text-[11px] text-slate-300"><span class="text-hextech-gold mt-0.5 shrink-0">▸</span><span>${escapeHtml(line)}</span></li>`
+                              )
+                              .join("")}
+                          </ul>`
+                        : ""
+                    }
+                  </div>
+                </div>
+              `
+              : ""
+          }
+        </div>
+      `;
+    }
+
+    function renderCommonPlansHtml() {
+      const visiblePlans =
+        state.selectedPlanId === "ALL"
+          ? COMMON_WIN_PLANS
+          : COMMON_WIN_PLANS.filter((p) => p.id === state.selectedPlanId);
+
+      return `
+        <main class="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+          <div class="hextech-card p-6 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-hextech-gold/20 text-hextech-goldLight border border-hextech-gold/45">
+                  🏆 3v3 아레나 공용 1등 플랜
+                </span>
+                <span class="text-xs text-slate-400">
+                  아이콘에 마우스를 올리거나 클릭/탭하면 상세 툴팁이 표시됩니다
+                </span>
+              </div>
+              <h2 class="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                모든 챔피언 공용 1등 승리 플랜 (5종)
+              </h2>
+              <p class="text-xs sm:text-sm text-slate-400">
+                저주 증강 6종 · 모자장수(해트트릭+퀘스트+40개 상한) · 자동화 무한 루프 · 검무+대지의 각성+소환사 혁명 · 거인의 결의
+              </p>
+            </div>
+            <button
+              type="button"
+              data-action="switch-view"
+              data-view="analytics"
+              class="shrink-0 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-hextech-cyan/60 text-xs font-bold text-slate-200 transition-all self-start md:self-center"
+            >
+              📊 챔피언 실측 분석으로 이동
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              data-action="select-plan"
+              data-plan-id="ALL"
+              class="px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                state.selectedPlanId === "ALL"
+                  ? "bg-amber-400 text-slate-950 border-amber-300 shadow-lg"
+                  : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
+              }"
+            >
+              전체 플랜 (${COMMON_WIN_PLANS.length})
+            </button>
+            ${COMMON_WIN_PLANS.map(
+              (plan) => `
+                <button
+                  type="button"
+                  data-action="select-plan"
+                  data-plan-id="${plan.id}"
+                  class="px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                    state.selectedPlanId === plan.id
+                      ? "bg-teal-400 text-slate-950 border-teal-300 shadow-lg"
+                      : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-600 hover:text-white"
+                  }"
+                >
+                  <span>${plan.icon}</span>
+                  <span>${plan.num}. ${escapeHtml(plan.title.replace(" 플랜", ""))}</span>
+                </button>
+              `
+            ).join("")}
+          </div>
+
+          <div class="space-y-6">
+            ${visiblePlans
+              .map(
+                (plan) => `
+                  <article class="hextech-card rounded-3xl border bg-gradient-to-br ${plan.accent} p-5 sm:p-7 space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-800/80">
+                      <div class="flex items-start gap-3.5">
+                        <div class="w-12 h-12 rounded-2xl bg-slate-950/80 border border-slate-700/80 flex items-center justify-center text-2xl shrink-0">
+                          ${plan.icon}
+                        </div>
+                        <div>
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs font-black tracking-wider text-hextech-gold">PLAN ${plan.num}</span>
+                            <h3 class="text-xl sm:text-2xl font-black text-white">${escapeHtml(plan.title)}</h3>
+                          </div>
+                          <p class="text-xs sm:text-sm text-slate-300 mt-1">${escapeHtml(plan.subtitle)}</p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        ${plan.badges
+                          .map(
+                            (b) =>
+                              `<span class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-950/75 text-slate-200 border border-slate-700/80">${escapeHtml(b)}</span>`
+                          )
+                          .join("")}
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4">
+                      ${plan.sections
+                        .map(
+                          (sec, sIdx) => `
+                            <div class="bg-slate-950/60 border border-slate-800/85 rounded-2xl p-4 sm:p-5 space-y-3.5">
+                              <h4 class="text-sm font-extrabold text-hextech-goldLight flex items-center gap-2">
+                                <span class="w-1.5 h-4 rounded-full bg-hextech-cyan inline-block"></span>
+                                <span>${escapeHtml(sec.heading)}</span>
+                              </h4>
+                              ${
+                                sec.entities && sec.entities.length > 0
+                                  ? `<div class="flex flex-wrap gap-2.5 pt-0.5">${sec.entities
+                                      .map((entityName) => renderEntityBadgeHtml(entityName, `${plan.id}__${sIdx}__${entityName}`))
+                                      .join("")}</div>`
+                                  : ""
+                              }
+                              ${
+                                sec.bullets && sec.bullets.length > 0
+                                  ? `<ul class="space-y-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                                      ${sec.bullets
+                                        .map(
+                                          (b) =>
+                                            `<li class="flex items-start gap-2"><span class="text-hextech-cyan mt-1 shrink-0 text-[10px]">●</span><span>${escapeHtml(b)}</span></li>`
+                                        )
+                                        .join("")}
+                                    </ul>`
+                                  : ""
+                              }
+                              ${
+                                sec.warning
+                                  ? `<div class="rounded-xl bg-rose-950/45 border border-rose-500/45 px-4 py-3 text-xs sm:text-[13px] text-rose-100 leading-relaxed flex items-start gap-2.5">
+                                      <span class="text-base shrink-0">⚠️</span>
+                                      <span>${escapeHtml(sec.warning)}</span>
+                                    </div>`
+                                  : ""
+                              }
+                            </div>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        </main>
+      `;
+    }
+
+    function renderAnalyticsHtml() {
+      const hasUploadedData = Object.keys(state.rawChampionsData).length > 0;
+      if (!hasUploadedData) {
+        return `
+          <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-12 flex items-center justify-center">
+            <div class="hextech-card p-8 sm:p-12 rounded-3xl text-center space-y-6 w-full">
+              <div class="w-16 h-16 mx-auto rounded-2xl bg-hextech-gold/15 border border-hextech-gold/40 flex items-center justify-center text-3xl">📊</div>
+              <div class="space-y-2">
+                <h2 class="text-2xl font-black text-white">수집한 아레나 3v3 JSON을 올려주세요</h2>
+                <p class="text-sm text-slate-400 leading-relaxed max-w-xl mx-auto">
+                  외부 사이트의 임의 통계는 전혀 포함되어 있지 않습니다. <br/>
+                  <code class="text-hextech-cyan bg-slate-900 px-1.5 py-0.5 rounded">arena_3v3_guide_all_champs.json</code> 파일을 불러오면 실측 통계가 표시됩니다.
+                </p>
+              </div>
+              <div data-action="trigger-upload" class="border-2 border-dashed border-slate-700 hover:border-hextech-cyan bg-slate-950/60 hover:bg-slate-900/80 transition-all rounded-2xl p-8 cursor-pointer space-y-3">
+                <div class="text-4xl">📂</div>
+                <div class="text-base font-extrabold text-white">클릭하거나 JSON 파일을 여기로 드래그하세요</div>
+                <div class="text-xs text-slate-500">지원 파일: arena_3v3_guide_all_champs.json</div>
+              </div>
+              <div>
+                <button type="button" data-action="switch-view" data-view="plans" class="px-5 py-2.5 rounded-xl bg-hextech-gold/15 hover:bg-hextech-gold/25 border border-hextech-gold/50 text-sm font-extrabold text-hextech-goldLight transition-all">
+                  🏆 공용 1등 플랜 5종 보기 →
+                </button>
+              </div>
+            </div>
+          </main>
+        `;
+      }
+
+      const patchSet = new Set();
+      Object.values(state.rawChampionsData).forEach((c) => Object.keys(c?.patch_stats || {}).forEach((p) => patchSet.add(p)));
+      const availablePatches = Array.from(patchSet).sort((a, b) => {
+        const [am, an] = a.split(".").map(Number);
+        const [bm, bn] = b.split(".").map(Number);
+        return bm !== am ? bm - am : bn - an;
+      });
+
+      const combined = {};
+      const lowerToCanonical = {};
+      Object.values(state.ddChampionsMap).forEach((ddC) => {
+        lowerToCanonical[ddC.id.toLowerCase()] = ddC.id;
+        combined[ddC.id] = {
+          champion_name: ddC.id,
+          kr_name: ddC.name,
+          roles: ddC.tags || ["Fighter"],
+          hasRealData: false,
+          best_augments: [],
+          best_prismatics: [],
+          core_items: [],
+          best_partners: []
+        };
+      });
+
+      Object.entries(state.rawChampionsData).forEach(([rawKey, champ]) => {
+        if (!champ || typeof champ !== "object") return;
+        const cKey = lowerToCanonical[String(champ.champion_name || rawKey).trim().toLowerCase()] || String(champ.champion_name || rawKey).trim();
+        const ddInfo = state.ddChampionsMap[cKey];
+        const correctedAugs = (champ.best_augments || []).map((aug) => {
+          const fixedName = normalizeAugmentName(aug.name);
+          const off = state.cdAugmentMetaMap[fixedName];
+          return {
+            ...aug,
+            name: fixedName,
+            rarity: resolveOfficialRarity(off?.rarity || aug.rarity, fixedName),
+            icon: off?.icon || aug.icon || aug.icon_url || ""
+          };
+        });
+        combined[cKey] = {
+          ...(combined[cKey] || {}),
+          ...champ,
+          champion_name: cKey,
+          kr_name: champ.kr_name && champ.kr_name.toLowerCase() !== cKey.toLowerCase() ? champ.kr_name : ddInfo?.name || cKey,
+          roles: ddInfo?.tags && ddInfo.tags.length > 0 ? ddInfo.tags : champ.roles || ["Fighter"],
+          best_augments: correctedAugs,
+          hasRealData: true
+        };
+      });
+
+      const enrichedList = Object.values(combined)
+        .map((c) => ({ ...c, computedSummary: computePatchFilteredSummary(c, state.selectedPatch, availablePatches) }))
+        .sort((a, b) => {
+          if (a.hasRealData !== b.hasRealData) return a.hasRealData ? -1 : 1;
+          if (a.hasRealData && b.hasRealData) {
+            if (a.computedSummary.bayes_placement !== b.computedSummary.bayes_placement) {
+              return a.computedSummary.bayes_placement - b.computedSummary.bayes_placement;
+            }
+            return b.computedSummary.picks - a.computedSummary.picks;
+          }
+          return (a.kr_name || "").localeCompare(b.kr_name || "", "ko");
+        });
+
+      const q = state.searchQuery.trim().toLowerCase();
+      const filteredList = enrichedList.filter((c) => {
+        if (state.onlyRealData && !c.hasRealData) return false;
+        if (state.roleFilter !== "전체") {
+          const koRoles = (c.roles || []).map((r) => ROLE_KO_MAP[r] || r);
+          if (!koRoles.includes(state.roleFilter)) return false;
+        }
+        if (state.tierFilter !== "전체" && c.computedSummary.tier_num !== Number(state.tierFilter)) return false;
+        if (q) {
+          const m1 = (c.kr_name || "").toLowerCase().includes(q);
+          const m2 = (c.champion_name || "").toLowerCase().includes(q);
+          if (!m1 && !m2) return false;
+        }
+        return true;
+      });
+
+      const activeChamp =
+        enrichedList.find((c) => c.champion_name === state.selectedChampKey) || filteredList[0] || enrichedList[0];
+      const s = activeChamp?.computedSummary || {};
+
+      return `
+        <main class="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          <aside class="lg:col-span-4 xl:col-span-3 hextech-card p-4 rounded-2xl space-y-3">
+            <input type="text" data-input="search" value="${escapeHtml(state.searchQuery)}" placeholder="챔피언 검색 (가렌, Garen...)" class="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none" />
+            <div class="grid grid-cols-5 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+              ${["전체", "1", "2", "3", "4"]
+                .map(
+                  (t) =>
+                    `<button type="button" data-action="tier-filter" data-tier="${t}" class="py-1.5 rounded-lg text-xs font-bold ${
+                      state.tierFilter === t ? "bg-amber-400 text-slate-950" : "text-slate-300 hover:bg-slate-800"
+                    }">${t === "전체" ? "전체" : `${t}티어`}</button>`
+                )
+                .join("")}
+            </div>
+            <div class="space-y-1 max-h-[520px] overflow-y-auto pr-1">
+              ${filteredList
+                .map((c, idx) => {
+                  const sel = activeChamp?.champion_name === c.champion_name;
+                  const badge = getTierBadgeMeta(c.computedSummary.tier_num);
+                  return `
+                    <button type="button" data-action="select-champ" data-champ="${escapeHtml(c.champion_name)}" class="w-full text-left px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 ${
+                      sel ? "bg-amber-500/15 border-amber-400/70" : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
+                    }">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-[11px] font-bold text-slate-500 w-4">${idx + 1}</span>
+                        <img src="${escapeHtml(CHAMP_IMG(c.champion_name, state.ddVersion))}" alt="${escapeHtml(c.kr_name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />
+                        <div class="min-w-0">
+                          <div class="text-xs font-bold text-white truncate">${escapeHtml(c.kr_name)}</div>
+                          <div class="text-[10px] text-slate-500">${c.hasRealData ? `${c.computedSummary.picks}판` : "미수집"}</div>
+                        </div>
+                      </div>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold border ${badge.cls}">${badge.label}</span>
+                    </button>
+                  `;
+                })
+                .join("")}
+            </div>
+          </aside>
+
+          <section class="lg:col-span-8 xl:col-span-9 space-y-5">
+            ${
+              activeChamp && activeChamp.hasRealData
+                ? `
+                  <div class="hextech-card p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                      <img src="${escapeHtml(CHAMP_IMG(activeChamp.champion_name, state.ddVersion))}" alt="${escapeHtml(activeChamp.kr_name)}" class="w-20 h-20 rounded-2xl border-2 border-hextech-gold/70 object-cover" onerror="handleImgErr(this)" />
+                      <div>
+                        <h2 class="text-2xl sm:text-3xl font-black text-white">${escapeHtml(activeChamp.kr_name)}</h2>
+                        <div class="text-xs text-slate-400 mt-1">${s.picks.toLocaleString()}판 실측 · 평균 ${s.avg_placement}위 · 1등 ${s.win_rate}% · Top 3 ${s.top3_rate}%</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div class="hextech-card p-5 rounded-2xl space-y-3">
+                      <h3 class="text-base font-extrabold text-white pb-2 border-b border-slate-800">⚡ 주요 증강체</h3>
+                      ${(activeChamp.best_augments || [])
+                        .slice(0, 8)
+                        .map(
+                          (aug) => `
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-800/50 text-xs">
+                              <div class="flex items-center gap-2.5 min-w-0">
+                                ${
+                                  aug.icon
+                                    ? `<img src="${escapeHtml(aug.icon)}" alt="${escapeHtml(aug.name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />`
+                                    : `<span class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center">✨</span>`
+                                }
+                                <span class="font-bold text-white truncate">${escapeHtml(aug.name)}</span>
+                              </div>
+                              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${getRarityPillCls(aug.rarity)}">${escapeHtml(aug.rarity)}</span>
+                            </div>
+                          `
+                        )
+                        .join("")}
+                    </div>
+
+                    <div class="hextech-card p-5 rounded-2xl space-y-3">
+                      <h3 class="text-base font-extrabold text-white pb-2 border-b border-slate-800">💎 프리즘 · 핵심 아이템</h3>
+                      ${[
+                        ...(activeChamp.best_prismatics || []).slice(0, 4).map((it) => ({ ...it, _isPrism: true })),
+                        ...(activeChamp.core_items || []).slice(0, 4).map((it) => ({ ...it, _isPrism: false }))
+                      ]
+                        .map((item) => {
+                          const iUrl = resolveLatestItemIcon(item, item._isPrism);
+                          return `
+                            <div class="flex items-center justify-between py-1.5 border-b border-slate-800/50 text-xs">
+                              <div class="flex items-center gap-2.5 min-w-0">
+                                ${
+                                  iUrl
+                                    ? `<img src="${escapeHtml(iUrl)}" alt="${escapeHtml(item.name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover" onerror="handleImgErr(this)" />`
+                                    : `<span class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center">💎</span>`
+                                }
+                                <span class="font-bold text-white truncate">${escapeHtml(item.name)}</span>
+                              </div>
+                              <span class="text-xs font-bold text-hextech-goldLight">${item.avg ?? item.avg_placement}위</span>
+                            </div>
+                          `;
+                        })
+                        .join("")}
+                    </div>
+                  </div>
+                `
+                : `<div class="hextech-card p-10 rounded-2xl text-center text-sm text-slate-400">선택한 챔피언의 실측 데이터가 없습니다.</div>`
+            }
+          </section>
+        </main>
+      `;
+    }
+
+    function render() {
+      const rootEl = document.getElementById("app");
+      if (!rootEl) return;
+
+      const realCount = Object.keys(state.rawChampionsData).length;
+
+      rootEl.innerHTML = `
+        <div class="min-h-screen flex flex-col">
+          <input id="jsonFileInput" type="file" accept=".json,application/json" class="hidden" />
+
+          ${
+            state.toastMsg
+              ? `
+                <div class="fixed top-4 right-4 z-50 max-w-md">
+                  <div class="px-4 py-3 rounded-xl border shadow-2xl flex items-start gap-3 text-xs sm:text-sm bg-slate-900/95 border-hextech-gold/60 text-white">
+                    <span>${state.toastMsg.type === "error" ? "⚠️" : "✅"}</span>
+                    <p class="flex-1 leading-relaxed">${escapeHtml(state.toastMsg.text)}</p>
+                    <button type="button" data-action="dismiss-toast" class="text-slate-400 hover:text-white font-bold px-1">✕</button>
+                  </div>
+                </div>
+              `
+              : ""
+          }
+
+          <header class="sticky top-0 z-30 bg-hextech-bg/92 backdrop-blur-md border-b border-hextech-gold/25">
+            <div class="max-w-[1480px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-yellow-700 flex items-center justify-center shadow-lg text-slate-950 font-black text-lg">
+                  3v3
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">
+                      LoL 아레나 3v3 공략 가이드 & 실측 분석기
+                    </h1>
+                    <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-teal-500/15 text-teal-300 border border-teal-400/35">
+                      6팀 · 18인 모드
+                    </span>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-0.5">
+                    ${state.ddSyncState === "ready" ? `🟢 Riot 공식 명칭·아이콘 동기화 (v${escapeHtml(state.ddVersion)})` : "🟡 공식 데이터 동기화 중..."}
+                    ${realCount > 0 ? ` · 실측 ${realCount}명 로드됨` : ""}
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700/80">
+                  <button
+                    type="button"
+                    data-action="switch-view"
+                    data-view="plans"
+                    class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      state.viewMode === "plans" ? "bg-amber-400 text-slate-950 shadow" : "text-slate-300 hover:text-white"
+                    }"
+                  >
+                    🏆 공용 1등 플랜 (${COMMON_WIN_PLANS.length})
+                  </button>
+                  <button
+                    type="button"
+                    data-action="switch-view"
+                    data-view="analytics"
+                    class="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      state.viewMode === "analytics" ? "bg-teal-400 text-slate-950 shadow" : "text-slate-300 hover:text-white"
+                    }"
+                  >
+                    📊 실측 분석
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  data-action="trigger-upload"
+                  class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-extrabold text-xs shadow-lg hover:brightness-110 transition-all flex items-center gap-1.5"
+                >
+                  <span>📂</span>
+                  <span>실측 JSON 불러오기</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          ${state.viewMode === "plans" ? renderCommonPlansHtml() : renderAnalyticsHtml()}
+        </div>
+      `;
+
+      bindEvents();
+    }
+
+    function handleImgErr(imgEl) {
+      const fb = imgEl.getAttribute("data-fallback");
+      const emoji = imgEl.getAttribute("data-emoji") || "✨";
+      if (fb && imgEl.getAttribute("data-tried") !== "1") {
+        imgEl.setAttribute("data-tried", "1");
+        imgEl.src = fb;
+        return;
+      }
+      const span = document.createElement("span");
+      span.className = imgEl.className.replace("object-cover", "") + " bg-slate-800 flex items-center justify-center text-sm";
+      span.textContent = emoji;
+      imgEl.replaceWith(span);
+    }
+
+    function bindEvents() {
+      const fileInput = document.getElementById("jsonFileInput");
+      if (fileInput) {
+        fileInput.onchange = (e) => {
+          const f = e.target?.files?.[0];
+          if (!f) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            try {
+              const parsed = JSON.parse(String(ev.target?.result || "{}"));
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
+                setToast("error", "올바른 집계 JSON 파일이 아닙니다.");
+                return;
+              }
+              state.rawChampionsData = parsed;
+              state.uploadedFileName = f.name;
+              state.viewMode = "analytics";
+              state.selectedChampKey = Object.keys(parsed)[0] || "";
+              setToast("success", `'${f.name}' 로드 완료 (${Object.keys(parsed).length}명)`);
+            } catch (err) {
+              setToast("error", `JSON 파싱 오류: ${err.message}`);
+            }
+          };
+          reader.readAsText(f, "utf-8");
+        };
+      }
+
+      document.querySelectorAll("[data-action]").forEach((el) => {
+        const action = el.getAttribute("data-action");
+        if (action === "toggle-tooltip") {
+          const tKey = el.getAttribute("data-tooltip-key");
+          el.onclick = (e) => {
+            e.stopPropagation();
+            state.activeTooltipKey = state.activeTooltipKey === tKey ? null : tKey;
+            render();
+          };
+          const wrap = el.closest("[data-tooltip-wrap]");
+          if (wrap) {
+            wrap.onmouseenter = () => {
+              if (state.activeTooltipKey !== tKey) {
+                state.activeTooltipKey = tKey;
+                render();
+              }
+            };
+            wrap.onmouseleave = () => {
+              if (state.activeTooltipKey === tKey) {
+                state.activeTooltipKey = null;
+                render();
+              }
+            };
+          }
+        } else if (action === "close-tooltip") {
+          el.onclick = (e) => {
+            e.stopPropagation();
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "switch-view") {
+          el.onclick = () => {
+            state.viewMode = el.getAttribute("data-view") || "plans";
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "select-plan") {
+          el.onclick = () => {
+            state.selectedPlanId = el.getAttribute("data-plan-id") || "ALL";
+            state.activeTooltipKey = null;
+            render();
+          };
+        } else if (action === "trigger-upload") {
+          el.onclick = () => document.getElementById("jsonFileInput")?.click();
+        } else if (action === "dismiss-toast") {
+          el.onclick = () => {
+            state.toastMsg = null;
+            render();
+          };
+        } else if (action === "tier-filter") {
+          el.onclick = () => {
+            state.tierFilter = el.getAttribute("data-tier") || "전체";
+            render();
+          };
+        } else if (action === "select-champ") {
+          el.onclick = () => {
+            state.selectedChampKey = el.getAttribute("data-champ") || "";
+            render();
+          };
+        }
+      });
+
+      const searchInput = document.querySelector('[data-input="search"]');
+      if (searchInput) {
+        searchInput.oninput = (e) => {
+          state.searchQuery = e.target.value;
+          render();
+          const reInput = document.querySelector('[data-input="search"]');
+          if (reInput) {
+            reInput.focus();
+            reInput.setSelectionRange(reInput.value.length, reInput.value.length);
+          }
+        };
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      if (state.activeTooltipKey && !e.target.closest("[data-tooltip-wrap]")) {
+        state.activeTooltipKey = null;
+        render();
+      }
+    });
+
+    async function syncOfficialMetadata() {
+      try {
+        const verRes = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
+        if (!verRes.ok) return;
+        const versions = await verRes.json();
+        const latestVer = versions?.[0] || FALLBACK_DD_VERSION;
+
+        const [champRes, itemRes, cherryRes, arenaRes] = await Promise.all([
+          fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/champion.json`),
+          fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVer}/data/ko_KR/item.json`),
+          fetch(CHERRY_AUGMENTS_KO_URL).catch(() => null),
+          fetch(CDRAGON_ARENA_KO_URL).catch(() => null)
+        ]);
+
+        if (!champRes.ok || !itemRes.ok) return;
+        const [champJson, itemJson] = await Promise.all([champRes.json(), itemRes.json()]);
+
+        const augMap = {};
+        const cdItems = {};
+        const cdPrismaticItems = {};
+        if (cherryRes && cherryRes.ok) {
+          const cherryList = await cherryRes.json();
+          if (Array.isArray(cherryList)) {
+            const numMap = calibrateNumericRarityMap(cherryList);
+            cherryList.forEach((aug) => {
+              const name = normalizeAugmentName(aug?.nameTRA || aug?.name || "");
+              if (!name || name === "???") return;
+              augMap[name] = {
+                id: Number(aug.id || 0),
+                rarity: resolveOfficialRarity(aug.rarity, name, numMap),
+                icon: normalizeCDragonAsset(aug.augmentSmallIconPath || aug.augmentLargeIconPath || "")
+              };
+            });
+          }
+        }
+
+        if (arenaRes && arenaRes.ok) {
+          const arenaJson = await arenaRes.json();
+          const rawAugs = arenaJson?.augments || [];
+          const numMap = calibrateNumericRarityMap(rawAugs);
+          rawAugs.forEach((aug) => {
+            const name = normalizeAugmentName(aug?.name || "");
+            if (!name || name === "???") return;
+            const icon = normalizeCDragonAsset(aug.iconSmall || aug.iconLarge || "");
+            if (!augMap[name]) {
+              augMap[name] = {
+                id: Number(aug.id || 0),
+                rarity: resolveOfficialRarity(aug.rarity, name, numMap),
+                icon
+              };
+            } else if (!augMap[name].icon && icon) {
+              augMap[name].icon = icon;
+            }
+          });
+          (arenaJson?.items || []).forEach((it) => {
+            const iname = String(it?.name || "").trim();
+            const iid = Number(it?.id || 0);
+            const iconUrl = normalizeCDragonAsset(it?.iconPath || "");
+            if (!iname || !iconUrl) return;
+            if (iid >= 440000 && iid < 450000) {
+              cdPrismaticItems[iname] = iconUrl;
+            }
+            if (!cdItems[iname] || (iid >= 440000 && iid < 450000)) {
+              cdItems[iname] = iconUrl;
+            }
+          });
+        }
+
+        const itemNameMap = {};
+        const itemNamePriority = {};
+        const prismaticItemIdMap = {};
+        Object.entries(itemJson.data || {}).forEach(([idStr, info]) => {
+          const iname = String(info?.name || "").trim();
+          const iid = Number(idStr);
+          if (!iname || !iid) return;
+          if (iid >= 440000 && iid < 450000) {
+            prismaticItemIdMap[iname] = iid;
+          }
+          const prio = (iid >= 1000 && iid < 7000) ? 3 : (iid >= 220000 && iid < 230000) ? 2 : 1;
+          if (!itemNameMap[iname] || prio > (itemNamePriority[iname] || 0)) {
+            itemNameMap[iname] = iid;
+            itemNamePriority[iname] = prio;
+          }
+        });
+
+        state.ddVersion = latestVer;
+        state.ddChampionsMap = champJson.data || {};
+        state.ddItemNameMap = itemNameMap;
+        state.ddPrismaticItemIdMap = prismaticItemIdMap;
+        state.cdAugmentMetaMap = augMap;
+        state.cdItemIconMap = cdItems;
+        state.cdPrismaticIconMap = cdPrismaticItems;
+        state.ddSyncState = "ready";
+        render();
+      } catch (_) {}
+    }
+
+    async function tryAutoLoadHostedJson() {
+      try {
+        const res = await fetch(`./arena_3v3_guide_all_champs.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const parsed = await res.json();
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+          state.rawChampionsData = parsed;
+          state.uploadedFileName = "arena_3v3_guide_all_champs.json";
+          state.selectedChampKey = Object.keys(parsed)[0] || "";
+          render();
+        }
+      } catch (_) {}
+    }
+
+    // 즉시 첫 렌더링 실행
+    render();
+    syncOfficialMetadata();
+    tryAutoLoadHostedJson();
+  </script>
+</body>
+</html>
