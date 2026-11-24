@@ -18,6 +18,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: arena-3v3-data-update
+  cancel-in-progress: false
+
 jobs:
   collect-and-publish:
     runs-on: ubuntu-latest
@@ -46,13 +50,25 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          mkdir -p /tmp/arena_out
+          [ -f arena_3v3_checkpoint.jsonl.gz ] && cp arena_3v3_checkpoint.jsonl.gz /tmp/arena_out/
+          [ -f arena_3v3_guide_all_champs.json ] && cp arena_3v3_guide_all_champs.json /tmp/arena_out/
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          [ -f /tmp/arena_out/arena_3v3_checkpoint.jsonl.gz ] && cp /tmp/arena_out/arena_3v3_checkpoint.jsonl.gz .
+          [ -f /tmp/arena_out/arena_3v3_guide_all_champs.json ] && cp /tmp/arena_out/arena_3v3_guide_all_champs.json .
+
           git rm --ignore-unmatch arena_3v3_checkpoint.jsonl
           [ -f arena_3v3_checkpoint.jsonl.gz ] && git add arena_3v3_checkpoint.jsonl.gz
           [ -f arena_3v3_guide_all_champs.json ] && git add arena_3v3_guide_all_champs.json
+
           if git diff --staged --quiet; then
             echo "No data changes to commit."
           else
             git commit -m "chore: daily arena 3v3 stats update ($(date -u +'%Y-%m-%d'))"
-            git pull --rebase origin main
-            git push
+            git push origin main
           fi
+
