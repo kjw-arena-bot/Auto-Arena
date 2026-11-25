@@ -96,6 +96,26 @@
       222051, 223112, 223177, 223184
     ]);
 
+    // 일반 전설급 아이템 강제 보호 목록 (프리즘으로 오분류 차단)
+    const FORCE_LEGENDARY_ITEM_NAMES = new Set([
+      "지배자의 피갑옷",
+      "워모그의 갑옷",
+      "혈마법사의 저주"
+    ]);
+
+    // 아레나 프리즘 아이템 공식 한국어 명칭 목록 (구 ID 매핑 JSON 호환)
+    const KNOWN_PRISMATIC_ITEMS_KO = new Set([
+      "블랙홀 건틀릿", "별빛밤 망토", "부서진 여왕의 왕관", "잔혹 행위", "흑강철 발톱",
+      "참수자", "불사대마왕의 왕관", "악마의 포옹", "폭발의 구", "다이아몬드 창",
+      "신성한 파괴자", "용의 심장", "드락사르의 황혼검", "일라이자의 기적", "창공의 서약",
+      "만년서리", "살점포식자", "엔트로피의 힘", "질책", "돌풍", "도박꾼의 칼날",
+      "가고일 돌갑옷", "불귀신", "혈마법사의 투구", "마공화살 동료", "활력증진의 펜던트",
+      "킨코우 십수", "신기루 검", "달빛 마법검", "번개 막대", "밤의 수확자", "자객의 발톱",
+      "조종의 손아귀", "화염술사의 망토", "광휘의 미덕", "현실 균열", "사신의 대가",
+      "섭정 시해", "반향", "룬 조각기", "핏빛 선물", "용암의 방패", "신성의 검",
+      "승천의 부적", "터보 화공 탱크", "황혼의 끝자락", "쌍둥이 가면"
+    ]);
+
     const OFFICIAL_AUGMENT_RARITY_KO = {
       // 프리즘
       "감바 모루": "프리즘", "거석상의 용기": "프리즘", "거인": "프리즘", "거인 학살자": "프리즘",
@@ -574,7 +594,7 @@
       ddChampionsMap: {},
       ddItemNameMap: {},
       ddPrismaticItemIdMap: {},
-      ddLegendaryItemNames: new Set(),
+      ddBootItemNames: new Set(),
       cdAugmentMetaMap: {},
       cdItemIconMap: {},
       cdPrismaticIconMap: {},
@@ -587,8 +607,12 @@
       onlyRealData: true,
       selectedPatch: "ALL",
       rarityFilter: "전체",
-      itemSort: "pick_rate",     // 기본 정렬: 픽률순
-      augmentSort: "pick_rate"   // 기본 정렬: 픽률순
+      itemSort: "pick_rate",
+      augmentSort: "pick_rate",
+
+      // 검색 시 좌측 목록만 부분 갱신하기 위한 캐시
+      sidebarBaseList: [],
+      activeChampKeyForList: ""
     };
 
     const escapeHtml = (str) =>
@@ -677,18 +701,22 @@
       return "실버";
     };
 
+    // 프리즘 아이템 vs 일반 전설급 아이템 엄격 판별 (구 ID가 찍힌 프리즘 및 지배자의 피갑옷 등 모두 보정)
     const isTruePrismaticItem = (item) => {
       const rawId = Number(item?.id || 0);
       const name = String(item?.name || "").trim();
+      if (name && FORCE_LEGENDARY_ITEM_NAMES.has(name)) return false;
       if (rawId >= 440000 && rawId < 450000) return true;
-      if (rawId > 0) return false;
-      if (name && state.ddLegendaryItemNames.has(name) && !state.ddPrismaticItemIdMap[name]) return false;
-      if (name && (state.ddPrismaticItemIdMap[name] || state.cdPrismaticIconMap[name])) return true;
+      if (name && (state.ddPrismaticItemIdMap[name] || state.cdPrismaticIconMap[name] || KNOWN_PRISMATIC_ITEMS_KO.has(name))) {
+        return true;
+      }
       return false;
     };
 
     const isExcludedNonLegendary = (item) => {
       const rawId = Number(item?.id || 0);
+      const name = String(item?.name || "").trim();
+      if (name && state.ddBootItemNames.has(name)) return true;
       if (!rawId) return false;
       if (NON_LEGENDARY_ITEM_IDS.has(rawId)) return true;
       if (rawId >= 220000 && rawId < 220100) return true;
@@ -701,7 +729,7 @@
       if (explicit !== undefined && explicit !== null && Number.isFinite(Number(explicit))) {
         return Number(Number(explicit).toFixed(1));
       }
-      const picks = Number(entry?.picks ?? entry?.count ?? 0);
+      const picks = Number(entry?.picks ?? entry?.count ?? entry?.games ?? 0);
       if (champTotalPicks > 0 && picks > 0) {
         return Number(Math.min(100, (picks / champTotalPicks) * 100).toFixed(1));
       }
@@ -709,9 +737,9 @@
     };
 
     const normalizeStatEntry = (rawEntry, champTotalPicks) => {
-      const picks = Number(rawEntry?.picks ?? rawEntry?.count ?? 0);
+      const picks = Number(rawEntry?.picks ?? rawEntry?.count ?? rawEntry?.games ?? 0);
       const avgNum = Number(rawEntry?.avg ?? rawEntry?.avg_placement);
-      const winNum = Number(rawEntry?.win_rate ?? rawEntry?.top1_rate);
+      const winNum = Number(rawEntry?.win_rate ?? rawEntry?.top1_rate ?? rawEntry?.win);
       const top3Num = Number(rawEntry?.top3_rate);
       return {
         ...rawEntry,
@@ -733,7 +761,6 @@
           if (a._winRate !== b._winRate) return b._winRate - a._winRate;
           return b._pickRate - a._pickRate || b._picks - a._picks;
         }
-        // 기본: 픽률 내림차순 → 표본 내림차순 → 평균 등수 오름차순
         if (b._pickRate !== a._pickRate) return b._pickRate - a._pickRate;
         if (b._picks !== a._picks) return b._picks - a._picks;
         return a._avg - b._avg;
@@ -1205,7 +1232,6 @@
       `;
     }
 
-    // 프리즘 / 일반 전설 아이템 행: 픽률 + 평균 등수 나란히 표시
     function renderItemRowHtml(item, isPrismatic, rankIdx, maxPickRate) {
       const iUrl = resolveLatestItemIcon(item, isPrismatic);
       const avg = item._avg < 9.9 ? `${item._avg.toFixed(2)}위` : "-";
@@ -1237,7 +1263,6 @@
               </div>
             </div>
 
-            <!-- 픽률 & 평균 등수 동시 표시 -->
             <div class="flex items-center gap-2 shrink-0">
               <div class="min-w-[58px] text-right px-2 py-1 rounded-lg bg-slate-950/70 border border-slate-800/90">
                 <div class="text-[9px] text-slate-400 font-semibold leading-none">픽률</div>
@@ -1256,7 +1281,6 @@
       `;
     }
 
-    // 증강체 행: 픽률 + 평균 등수 나란히 표시
     function renderAugmentRowHtml(aug, rankIdx, maxPickRate) {
       const avg = aug._avg < 9.9 ? `${aug._avg.toFixed(2)}위` : "-";
       const picks = aug._picks;
@@ -1304,6 +1328,65 @@
           </div>
         </div>
       `;
+    }
+
+    // 좌측 챔피언 목록 전용 렌더러 (한글 IME 조합 끊김 방지용 부분 갱신)
+    function renderChampListItemsHtml(list, activeChampName) {
+      if (!list.length) {
+        return `<div class="py-10 text-center text-xs text-slate-500">조건에 맞는 챔피언이 없습니다.</div>`;
+      }
+      return list
+        .map((c, idx) => {
+          const sel = activeChampName === c.champion_name;
+          const badge = getTierBadgeMeta(c.computedSummary.tier_num);
+          return `
+            <button type="button" data-action="select-champ" data-champ="${escapeHtml(c.champion_name)}" class="w-full text-left px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+              sel ? "bg-amber-500/15 border-amber-400/70" : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
+            }">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-[11px] font-bold text-slate-500 w-5 text-center">${idx + 1}</span>
+                <img src="${escapeHtml(CHAMP_IMG(c.champion_name, state.ddVersion))}" alt="${escapeHtml(c.kr_name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover shrink-0" onerror="handleImgErr(this)" />
+                <div class="min-w-0">
+                  <div class="text-xs font-bold text-white truncate">${escapeHtml(c.kr_name)}</div>
+                  <div class="text-[10px] text-slate-400">
+                    ${
+                      c.hasRealData && c.computedSummary.picks > 0
+                        ? `${c.computedSummary.picks.toLocaleString()}판 · 평균 ${c.computedSummary.avg_placement}위`
+                        : "미수집"
+                    }
+                  </div>
+                </div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold border shrink-0 ${badge.cls}">${badge.label}</span>
+            </button>
+          `;
+        })
+        .join("");
+    }
+
+    function updateSidebarListOnly() {
+      const listBox = document.getElementById("champListBox");
+      const countEl = document.getElementById("champCountNum");
+      if (!listBox) return;
+
+      const q = state.searchQuery.trim().toLowerCase();
+      const filtered = (state.sidebarBaseList || []).filter((c) => {
+        if (!q) return true;
+        return (
+          (c.kr_name || "").toLowerCase().includes(q) ||
+          (c.champion_name || "").toLowerCase().includes(q)
+        );
+      });
+
+      if (countEl) countEl.textContent = String(filtered.length);
+      listBox.innerHTML = renderChampListItemsHtml(filtered, state.activeChampKeyForList || state.selectedChampKey);
+
+      listBox.querySelectorAll('[data-action="select-champ"]').forEach((el) => {
+        el.onclick = () => {
+          state.selectedChampKey = el.getAttribute("data-champ") || "";
+          render();
+        };
+      });
     }
 
     function renderAnalyticsHtml() {
@@ -1401,24 +1484,30 @@
           return (a.kr_name || "").localeCompare(b.kr_name || "", "ko");
         });
 
-      const q = state.searchQuery.trim().toLowerCase();
-      const filteredList = enrichedList.filter((c) => {
+      const baseList = enrichedList.filter((c) => {
         if (state.onlyRealData && (!c.hasRealData || c.computedSummary.picks === 0)) return false;
         if (state.roleFilter !== "전체") {
           const koRoles = (c.roles || []).map((r) => ROLE_KO_MAP[r] || r);
           if (!koRoles.includes(state.roleFilter)) return false;
         }
         if (state.tierFilter !== "전체" && c.computedSummary.tier_num !== Number(state.tierFilter)) return false;
-        if (q) {
-          const m1 = (c.kr_name || "").toLowerCase().includes(q);
-          const m2 = (c.champion_name || "").toLowerCase().includes(q);
-          if (!m1 && !m2) return false;
-        }
         return true;
+      });
+      state.sidebarBaseList = baseList;
+
+      const q = state.searchQuery.trim().toLowerCase();
+      const filteredList = baseList.filter((c) => {
+        if (!q) return true;
+        return (
+          (c.kr_name || "").toLowerCase().includes(q) ||
+          (c.champion_name || "").toLowerCase().includes(q)
+        );
       });
 
       const activeChamp =
         enrichedList.find((c) => c.champion_name === state.selectedChampKey) || filteredList[0] || enrichedList[0];
+      state.activeChampKeyForList = activeChamp?.champion_name || "";
+
       const s = activeChamp?.computedSummary || {};
       const activeBadge = getTierBadgeMeta(s.tier_num);
 
@@ -1503,7 +1592,14 @@
 
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             <aside class="lg:col-span-4 xl:col-span-3 hextech-card p-4 rounded-2xl space-y-3">
-              <input type="text" data-input="search" value="${escapeHtml(state.searchQuery)}" placeholder="챔피언 검색 (가렌, Garen...)" class="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none" />
+              <input
+                type="text"
+                data-input="search"
+                value="${escapeHtml(state.searchQuery)}"
+                placeholder="챔피언 검색 (가렌, Garen...)"
+                autocomplete="off"
+                class="w-full bg-slate-950/90 border border-slate-700 focus:border-hextech-cyan rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none"
+              />
 
               <div class="grid grid-cols-5 gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
                 ${["전체", "1", "2", "3", "4"]
@@ -1536,45 +1632,15 @@
               </div>
 
               <div class="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
-                <span>표시 중: <strong class="text-white">${filteredList.length}</strong>명</span>
+                <span>표시 중: <strong id="champCountNum" class="text-white">${filteredList.length}</strong>명</span>
                 <label class="flex items-center gap-1.5 cursor-pointer select-none">
                   <input type="checkbox" data-action="toggle-only-real" ${state.onlyRealData ? "checked" : ""} class="accent-teal-400 rounded" />
                   <span>실측 데이터만</span>
                 </label>
               </div>
 
-              <div class="space-y-1 max-h-[580px] overflow-y-auto pr-1">
-                ${
-                  filteredList.length > 0
-                    ? filteredList
-                        .map((c, idx) => {
-                          const sel = activeChamp?.champion_name === c.champion_name;
-                          const badge = getTierBadgeMeta(c.computedSummary.tier_num);
-                          return `
-                            <button type="button" data-action="select-champ" data-champ="${escapeHtml(c.champion_name)}" class="w-full text-left px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 transition-all ${
-                              sel ? "bg-amber-500/15 border-amber-400/70" : "bg-slate-900/55 border-slate-800/70 hover:bg-slate-800/70"
-                            }">
-                              <div class="flex items-center gap-2 min-w-0">
-                                <span class="text-[11px] font-bold text-slate-500 w-5 text-center">${idx + 1}</span>
-                                <img src="${escapeHtml(CHAMP_IMG(c.champion_name, state.ddVersion))}" alt="${escapeHtml(c.kr_name)}" loading="lazy" class="w-8 h-8 rounded-lg border border-slate-700 object-cover shrink-0" onerror="handleImgErr(this)" />
-                                <div class="min-w-0">
-                                  <div class="text-xs font-bold text-white truncate">${escapeHtml(c.kr_name)}</div>
-                                  <div class="text-[10px] text-slate-400">
-                                    ${
-                                      c.hasRealData && c.computedSummary.picks > 0
-                                        ? `${c.computedSummary.picks.toLocaleString()}판 · 평균 ${c.computedSummary.avg_placement}위`
-                                        : "미수집"
-                                    }
-                                  </div>
-                                </div>
-                              </div>
-                              <span class="px-1.5 py-0.5 rounded text-[10px] font-extrabold border shrink-0 ${badge.cls}">${badge.label}</span>
-                            </button>
-                          `;
-                        })
-                        .join("")
-                    : `<div class="py-10 text-center text-xs text-slate-500">조건에 맞는 챔피언이 없습니다.</div>`
-                }
+              <div id="champListBox" class="space-y-1 max-h-[580px] overflow-y-auto pr-1">
+                ${renderChampListItemsHtml(filteredList, state.activeChampKeyForList)}
               </div>
             </aside>
 
@@ -1694,7 +1760,7 @@
                             <span>💎</span><span>프리즘 아이템 통계</span>
                           </h3>
                           <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-400/40">
-                            ${prismSummary.count}종 · 44xxxx 전용
+                            ${prismSummary.count}종 · 프리즘 전용
                           </span>
                         </div>
 
@@ -1816,9 +1882,9 @@
                               ${partners
                                 .slice(0, 9)
                                 .map((pt) => {
-                                  const pKey = pt.champion_name || pt.name || "";
+                                  const pKey = pt.champion_name || pt.partner || pt.champion || pt.name || "";
                                   const pInfo = combined[pKey] || combined[lowerToCanonical[pKey.toLowerCase()]];
-                                  const pKr = pt.kr_name || pInfo?.kr_name || pKey;
+                                  const pKr = pt.kr_name || pInfo?.kr_name || pt.name || pKey;
                                   const pCanon = pInfo?.champion_name || pKey;
                                   const pAvg = pt._avg < 9.9 ? `${pt._avg.toFixed(2)}위` : "-";
                                   return `
@@ -2079,16 +2145,12 @@
         };
       }
 
+      // 한글 IME 조합이 깨지지 않도록 전체 render() 대신 좌측 목록만 갱신
       const searchInput = document.querySelector('[data-input="search"]');
       if (searchInput) {
         searchInput.oninput = (e) => {
           state.searchQuery = e.target.value;
-          render();
-          const reInput = document.querySelector('[data-input="search"]');
-          if (reInput) {
-            reInput.focus();
-            reInput.setSelectionRange(reInput.value.length, reInput.value.length);
-          }
+          updateSidebarListOnly();
         };
       }
     }
@@ -2159,7 +2221,7 @@
             const iid = Number(it?.id || 0);
             const iconUrl = normalizeCDragonAsset(it?.iconPath || "");
             if (!iname || !iconUrl) return;
-            if (iid >= 440000 && iid < 450000) {
+            if (iid >= 440000 && iid < 450000 && !FORCE_LEGENDARY_ITEM_NAMES.has(iname)) {
               cdPrismaticItems[iname] = iconUrl;
             }
             if (!cdItems[iname] || (iid >= 440000 && iid < 450000)) {
@@ -2171,16 +2233,20 @@
         const itemNameMap = {};
         const itemNamePriority = {};
         const prismaticItemIdMap = {};
-        const legendaryItemNames = new Set();
+        const bootItemNames = new Set();
 
         Object.entries(itemJson.data || {}).forEach(([idStr, info]) => {
           const iname = String(info?.name || "").trim();
           const iid = Number(idStr);
           if (!iname || !iid) return;
-          if (iid >= 440000 && iid < 450000) {
+
+          const tags = info?.tags || [];
+          if (tags.includes("Boots")) {
+            bootItemNames.add(iname);
+          }
+
+          if (iid >= 440000 && iid < 450000 && !FORCE_LEGENDARY_ITEM_NAMES.has(iname)) {
             prismaticItemIdMap[iname] = iid;
-          } else if ((iid >= 1000 && iid < 7000) || (iid >= 220100 && iid < 230000)) {
-            legendaryItemNames.add(iname);
           }
           const prio = (iid >= 1000 && iid < 7000) ? 3 : (iid >= 220000 && iid < 230000) ? 2 : 1;
           if (!itemNameMap[iname] || prio > (itemNamePriority[iname] || 0)) {
@@ -2193,7 +2259,7 @@
         state.ddChampionsMap = champJson.data || {};
         state.ddItemNameMap = itemNameMap;
         state.ddPrismaticItemIdMap = prismaticItemIdMap;
-        state.ddLegendaryItemNames = legendaryItemNames;
+        state.ddBootItemNames = bootItemNames;
         state.cdAugmentMetaMap = augMap;
         state.cdItemIconMap = cdItems;
         state.cdPrismaticIconMap = cdPrismaticItems;
