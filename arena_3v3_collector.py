@@ -1,33 +1,85 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-LoL 아레나 3v3 (6팀 · 18인) 실측 데이터 수집 및 집계기
-- 프리즘 아이템(44xxxx)과 일반 전설급 코어템 엄격 분리 (지배자의 피갑옷 등 오분류 차단)
-- 협곡 ID(xxxx) / 아레나 복사 ID(22xxxx) 동일 아이템 병합
-- 픽률(pick_rate) 계산 및 픽률순 + 평균 등수 함께 저장
-- gzip 압축 체크포인트(arena_3v3_checkpoint.jsonl.gz) 지원 및 기존 .jsonl 자동 마이그레이션
+LoL 아레나 3v3 (6팀 · 18인 모드) 자동 수집 및 통합 집계기
+=======================================================
+- 모든 통계(승률, 평균 순위, 1등 확률, 픽률, 시너지)는 오직 직접 수집한 Riot Match-V5 데이터로만 계산합니다.
+- 챔피언/아이템/증강 명칭과 등급(실버·골드·프리즘)만 Riot 공식 한국어 클라이언트 데이터로 동기화합니다.
+  1순위: Riot LCU 공식 ko_kr/v1/cherry-augments.json (nameTRA + kSilver/kGold/kPrismatic)
+  2순위: CommunityDragon cdragon/arena/ko_kr.json (프리즘 아이템 및 누락 증강 보완)
+  3순위: 한국어 공식 명칭/등급 교차 검증 사전 (통계 없음, 오직 명칭·등급 보정용)
+- 프리즘 아이템(44xxxx)과 일반 전설급 아이템을 엄격 분리하며, 픽률순(동률 시 평균 등수순)으로 정렬·저장합니다.
+- 체크포인트는 GitHub 100MB 제한 회피를 위해 gzip 압축(arena_3v3_checkpoint.jsonl.gz)으로 자동 저장됩니다.
 """
 
-import argparse
 import gzip
 import json
+import math
 import os
-import sys
 import time
-from collections import defaultdict, deque
-from datetime import datetime
-from pathlib import Path
+from collections import Counter, defaultdict, deque
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
 # =============================================================================
-# 1. 설정 상수
+# 1. 실행 설정 (Google Colab / 로컬 / GitHub Actions 공용)
 # =============================================================================
-PLATFORM_HOST = "https://kr.api.riotgames.com"
-REGIONAL_HOST = "https://asia.api.riotgames.com"
 
-DDRAGON_VERSIONS_URL = "https://ddragon.leagueoflegends.com/api/versions.json"
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _env_int(key: str, default: int) -> int:
+    raw = os.environ.get(key)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+def _env_csv_list(key: str, default: List[str]) -> List[str]:
+    raw = os.environ.get(key)
+    if raw is None or not raw.strip():
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+COLAB_CONFIG: Dict[str, Any] = {
+    # Riot Developer Portal API 키 (GitHub Actions에서는 Secrets의 RIOT_API_KEY 자동 주입)
+    "api_key": os.environ.get("RIOT_API_KEY", "RGAPI-YOUR-KEY-HERE"),
+    # 라우팅 리전 (한국 서버: asia)
+    "routing_region": os.environ.get("ROUTING_REGION", "asia"),
+    # True: 기존 체크포인트만 읽어 즉시 재집계
+    # False: Riot Match-V5 API로 신규 3v3 아레나 매치를 수집한 뒤 통합 집계
+    "aggregate_only": _env_bool("AGGREGATE_ONLY", True),
+    # 신규 수집할 최대 매치 수 (aggregate_only=False일 때 적용)
+    "max_new_matches": _env_int("MAX_NEW_MATCHES", 500),
+    # 아레나 큐 ID (1750: 3v3 아레나, 1700: 아레나 공통)
+    "target_queue_ids": [1750, 1700],
+    # 수집할 패치 버전 (빈 리스트 []이면 모든 패치 허용)
+    "target_patches": _env_csv_list("TARGET_PATCHES", []),
+    # 체크포인트가 없을 때 크롤링 시작용 시드 소환사 Riot ID (gameName#tagLine)
+    "seed_riot_ids": _env_csv_list("SEED_RIOT_IDS", ["Hide on bush#KR1"]),
+    # 입출력 파일 경로 (GitHub 100MB 제한 대응: .jsonl.gz 압축 기본 사용)
+    "checkpoint_path": os.environ.get("CHECKPOINT_PATH", "arena_3v3_checkpoint.jsonl.gz"),
+    "output_json_path": os.environ.get("OUTPUT_JSON_PATH", "arena_3v3_guide_all_champs.json"),
+    # 증강 집계 최소 표본 수 및 등급별 최대 출력 개수
+    "min_aug_picks": _env_int("MIN_AUG_PICKS", 3),
+    "max_augs_per_rarity": _env_int("MAX_AUGS_PER_RARITY", 12),
+}
+
+# =============================================================================
+# 2. 공식 한국어 명칭 & 등급 사전 (통계 없음 · 오직 명칭/등급 정규화 용도)
+# =============================================================================
+
 CDRAGON_ASSET_PREFIX = (
     "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/"
 )
@@ -38,20 +90,33 @@ CDRAGON_ARENA_KO_URL = (
     "https://raw.communitydragon.org/latest/cdragon/arena/ko_kr.json"
 )
 
-CHECKPOINT_GZ_PATH = Path("arena_3v3_checkpoint.jsonl.gz")
-CHECKPOINT_LEGACY_PATH = Path("arena_3v3_checkpoint.jsonl")
-OUTPUT_JSON_PATH = Path("arena_3v3_guide_all_champs.json")
+# 아레나 시작 아이템 / 여눈 진화 완성템 ID
+ARENA_STARTER_IDS: Set[int] = {2051, 3112, 3177, 3184, 222051, 223112, 223177, 223184}
+TEAR_EVOLVED_IDS: Set[int] = {3040, 3042, 3121, 223040, 223042, 223121}
 
-ARENA_QUEUE_ID = 1700
+# 과거 아레나 데이터 잔존으로 프리즘으로 오분류되기 쉬운 일반 전설급 아이템 강제 보호 목록
+FORCE_LEGENDARY_ITEMS_KO: Set[str] = {
+    "지배자의 피갑옷",
+    "워모그의 갑옷",
+    "혈마법사의 저주",
+}
 
-# 아레나 시작템 / 여눈 진화템
-ARENA_STARTER_IDS = {2051, 3112, 3177, 3184, 222051, 223112, 223177, 223184}
-TEAR_EVOLVED_IDS = {3040, 3042, 3121, 223040, 223042, 223121}
-EXCLUDED_ITEM_TAGS = {"Boots", "Consumable", "Trinket", "Jungle", "Lane"}
+# 아레나 프리즘 아이템 공식 한국어 명칭 목록 (워모그의 갑옷 등 일반 전설템 제외)
+KNOWN_PRISMATIC_ITEMS_KO: Set[str] = {
+    "블랙홀 건틀릿", "별빛밤 망토", "부서진 여왕의 왕관", "잔혹 행위", "흑강철 발톱",
+    "참수자", "불사대마왕의 왕관", "악마의 포옹", "폭발의 구", "다이아몬드 창",
+    "신성한 파괴자", "용의 심장", "드락사르의 황혼검", "일라이자의 기적", "창공의 서약",
+    "만년서리", "살점포식자", "엔트로피의 힘", "질책", "돌풍", "도박꾼의 칼날",
+    "가고일 돌갑옷", "불귀신", "혈마법사의 투구", "마공화살 동료", "활력증진의 펜던트",
+    "킨코우 십수", "신기루 검", "달빛 마법검", "번개 막대", "밤의 수확자", "자객의 발톱",
+    "조종의 손아귀", "화염술사의 망토", "광휘의 미덕", "현실 균열", "사신의 대가",
+    "섭정 시해", "반향", "룬 조각기", "핏빛 선물", "용암의 방패", "신성의 검",
+    "승천의 부적", "터보 화공 탱크", "황혼의 끝자락", "쌍둥이 가면",
+}
 
-# 공식 증강 등급 강제 보정 사전
+# 한국어 클라이언트 기준 공식 증강 등급 검증 사전 (숫자 enum 밀림 방지용 앵커)
 OFFICIAL_AUGMENT_RARITY_KO: Dict[str, str] = {
-    # 프리즘
+    # 프리즘 (Prismatic)
     "감바 모루": "프리즘", "거석상의 용기": "프리즘", "거인": "프리즘", "거인 학살자": "프리즘",
     "공포를 부르는 자": "프리즘", "광대 대학": "프리즘", "돌진": "프리즘", "보석 건틀릿": "프리즘",
     "신비한 주먹": "프리즘", "양손잡이": "프리즘", "유레카": "프리즘", "전장의 교향곡": "프리즘",
@@ -59,14 +124,14 @@ OFFICIAL_AUGMENT_RARITY_KO: Dict[str, str] = {
     "탄환 세례": "프리즘", "탭 댄서": "프리즘", "파멸의 예언자": "프리즘", "거인의 결의": "프리즘",
     "검무": "프리즘", "검을 뽑아라": "프리즘", "결투의 대가": "프리즘", "대지의 각성": "프리즘",
     "마법 소녀": "프리즘", "마트료시카": "프리즘", "불길한 서약": "프리즘", "야생 불꽃": "프리즘",
-    "양자 연산": "프리즘", "우주의 중심": "프리즘", "유리 대포": "프리즘",
+    "양자 연산": "프리즘", "우주의 중심": "프리즘", "유리 대포": "프리즘", "저주의 화염": "프리즘",
     "전환: 혼돈": "프리즘", "정신 결속": "프리즘", "찜솥": "프리즘", "최상급 조준경 부착": "프리즘",
     "케르베로스": "프리즘", "퀘스트: 우글렛의 마녀 모자": "프리즘", "프로틴 음료": "프리즘",
     "궁극기 대변혁": "프리즘", "궁극의 룰렛": "프리즘", "궤도형 레이저": "프리즘", "끝판왕": "프리즘",
     "난공불락": "프리즘", "마법 가속": "프리즘", "미친 과학자": "프리즘", "세월의 지혜": "프리즘",
     "요정 마법": "프리즘", "이케시아의 몰락": "프리즘", "전능의 영혼": "프리즘", "정의로운 분노": "프리즘",
     "죽음의 순환": "프리즘", "능력치 더하기 능력치 더하기 능력치!": "프리즘",
-    # 골드
+    # 골드 (Gold)
     "극악무도": "골드", "두 배 세 배": "골드", "마법 명사수": "골드", "마법 미사일": "골드",
     "바늘에 실 끼우기": "골드", "벼락": "골드", "전술적 대비": "골드", "전환: 프리즘": "골드",
     "처형 시간": "골드", "천상의 신체": "골드", "취약": "골드", "치명적 리듬": "골드",
@@ -84,13 +149,14 @@ OFFICIAL_AUGMENT_RARITY_KO: Dict[str, str] = {
     "복수": "골드", "부메랑 투척": "골드", "빛의 인도자 결의": "골드", "빛의 파수꾼": "골드",
     "빵과 잼": "골드", "신난다!": "골드", "소멸": "골드",
     "퀘스트: 미치광이 모자장수": "골드", "해트트릭": "골드",
-    # 실버
+    # 실버 (Silver)
     "강타자": "실버", "응급처치 키트": "실버", "능수능란": "실버", "음속 폭발": "실버",
     "신성 모독자": "실버", "서리 망령": "실버", "고문자": "실버", "죄책감의 쾌락": "실버",
     "우당탕탕": "실버", "빨랫줄": "실버", "점액 천지": "실버", "불여우": "실버",
     "주스 압착기": "실버", "에너지 충전": "실버", "침탈": "실버",
 }
 
+# 구 명칭 -> 공식 한국어 명칭 치환 사전
 AUGMENT_NAME_CORRECTIONS: Dict[str, str] = {
     "골리앗": "거인",
     "용기의 거인": "거석상의 용기",
@@ -104,18 +170,39 @@ AUGMENT_NAME_CORRECTIONS: Dict[str, str] = {
     "약탈": "침탈",
 }
 
+# 일반 전설급 코어 아이템 집계에서 제외할 시작 아이템·소모품·모루
+EXCLUDED_CORE_ITEMS_KO: Set[str] = {
+    "수호자의 뿔피리", "수호자의 검", "수호자의 보주", "수호자의 망치",
+    "수호자의 단검", "수호자의 부적", "수호자의 수의",
+    "능력치 모루", "전설급 아이템 모루", "프리즘 아이템 모루",
+    "전설 전사 아이템", "전설 탱커 아이템", "전설 마법사 아이템",
+    "전설 암살자 아이템", "전설 원거리 딜러 아이템", "전설 서포터 아이템",
+    "프리즘 아이템", "힘의 주스", "활력의 주스", "민첩의 주스", "모자 주스",
+    "투명 와드", "예언자의 렌즈", "망원형 개조", "장화", "충전형 물약", "체력 물약",
+}
+
+ROLE_KO_MAP: Dict[str, str] = {
+    "Fighter": "전사",
+    "Mage": "마법사",
+    "Assassin": "암살자",
+    "Marksman": "원거리 딜러",
+    "Support": "서포터",
+    "Tank": "탱커",
+}
+
+# =============================================================================
+# 3. 공용 유틸리티 함수
+# =============================================================================
+
 
 def log_print(msg: str) -> None:
+    """타임스탬프와 함께 즉시 플러시하여 출력합니다."""
     now = datetime.now().strftime("%H:%M:%S")
     print(f"[{now}] {msg}", flush=True)
 
 
-def normalize_augment_name(raw_name: str) -> str:
-    name = str(raw_name or "").strip()
-    return AUGMENT_NAME_CORRECTIONS.get(name, name)
-
-
 def normalize_cdragon_asset(raw_path: str) -> str:
+    """CommunityDragon 내부 에셋 경로를 HTTPS URL로 변환합니다."""
     if not raw_path:
         return ""
     trimmed = str(raw_path).strip()
@@ -129,1010 +216,1358 @@ def normalize_cdragon_asset(raw_path: str) -> str:
     return CDRAGON_ASSET_PREFIX + cleaned.lstrip("/")
 
 
-def parse_patch(game_version: str) -> str:
+def normalize_augment_name(raw_name: str) -> str:
+    """비공식/구 증강 명칭을 Riot 한국어 클라이언트 공식 명칭으로 정규화합니다."""
+    cleaned = str(raw_name or "").strip()
+    return AUGMENT_NAME_CORRECTIONS.get(cleaned, cleaned)
+
+
+def extract_patch_version(game_version: str) -> str:
+    """Match-V5 gameVersion('16.23.xxx.xxxx')에서 '메이저.마이너'만 추출합니다."""
     parts = str(game_version or "").split(".")
     if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
         return f"{parts[0]}.{parts[1]}"
     return "unknown"
 
 
+def patch_sort_key(patch: str) -> Tuple[int, int]:
+    """패치 문자열을 최신순 정렬 가능한 숫자 튜플로 변환합니다."""
+    parts = str(patch or "").split(".")
+    try:
+        return (int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return (0, 0)
+
+
+def calibrate_numeric_rarity_map(augments_list: List[Dict[str, Any]]) -> Dict[int, str]:
+    """앵커 증강의 실제 숫자 코드를 다수결 투표해 숫자 등급 체계를 자동 보정합니다."""
+    votes: Dict[int, Counter] = defaultdict(Counter)
+    int_values: Set[int] = set()
+
+    for aug in augments_list:
+        raw_r = aug.get("rarity")
+        if not isinstance(raw_r, int):
+            continue
+        int_values.add(raw_r)
+        name = normalize_augment_name(aug.get("nameTRA") or aug.get("name") or "")
+        known = OFFICIAL_AUGMENT_RARITY_KO.get(name)
+        if known:
+            votes[raw_r][known] += 1
+
+    mapping: Dict[int, str] = {}
+    for code, counter in votes.items():
+        if counter:
+            mapping[code] = counter.most_common(1)[0][0]
+
+    if len(mapping) < 3:
+        sorted_vals = sorted(int_values)
+        if sorted_vals == [0, 1, 2]:
+            mapping.setdefault(0, "실버")
+            mapping.setdefault(1, "골드")
+            mapping.setdefault(2, "프리즘")
+        elif {4, 8}.issubset(int_values):
+            mapping.setdefault(0, "실버")
+            mapping.setdefault(1, "실버")
+            mapping.setdefault(4, "골드")
+            mapping.setdefault(8, "프리즘")
+        elif len(sorted_vals) >= 3:
+            mapping.setdefault(sorted_vals[0], "실버")
+            mapping.setdefault(sorted_vals[1], "골드")
+            mapping.setdefault(sorted_vals[2], "프리즘")
+
+    return mapping
+
+
+def normalize_rarity_ko(
+    raw_rarity: Any,
+    numeric_rarity_map: Optional[Dict[int, str]] = None,
+    aug_name: str = "",
+) -> str:
+    """증강 등급 코드(kSilver/kGold/kPrismatic 또는 숫자)를 공식 한국어 등급으로 변환합니다."""
+    clean_name = normalize_augment_name(aug_name)
+    if clean_name in OFFICIAL_AUGMENT_RARITY_KO:
+        return OFFICIAL_AUGMENT_RARITY_KO[clean_name]
+
+    if isinstance(raw_rarity, str):
+        text = raw_rarity.strip().lower()
+        if "prism" in text or "프리즘" in text:
+            return "프리즘"
+        if "gold" in text or "골드" in text:
+            return "골드"
+        if "silver" in text or "실버" in text:
+            return "실버"
+        try:
+            raw_rarity = int(text)
+        except ValueError:
+            return "실버"
+
+    if isinstance(raw_rarity, int):
+        if numeric_rarity_map and raw_rarity in numeric_rarity_map:
+            return numeric_rarity_map[raw_rarity]
+        if raw_rarity in (2, 8):
+            return "프리즘"
+        if raw_rarity in (1, 4):
+            return "골드"
+        return "실버"
+
+    return "실버"
+
+
+def bayes_smooth(n: float, avg_val: float, m: float = 25.0, prior: float = 3.5) -> float:
+    """소표본 극단값을 보정하는 베이지안 스무딩을 계산합니다."""
+    if n <= 0:
+        return prior
+    return (n * avg_val + m * prior) / (n + m)
+
+
+def compute_composite_augment_score(
+    aug_picks: int,
+    champ_picks: int,
+    raw_avg_place: float,
+    raw_win_rate: float,
+    champ_avg_place: float,
+    champ_win_rate: float,
+) -> Dict[str, float]:
+    """직접 수집한 픽률(35%) + 1등 확률(35%) + 평균 순위(30%)로 종합 점수를 산출합니다."""
+    pick_rate = round(min(100.0, (aug_picks / max(champ_picks, 1)) * 100.0), 1)
+    m = 12.0
+    bayes_place = round(bayes_smooth(aug_picks, raw_avg_place, m=m, prior=champ_avg_place), 2)
+    bayes_win = round(bayes_smooth(aug_picks, raw_win_rate, m=m, prior=champ_win_rate), 1)
+
+    win_score = min(max((bayes_win / 42.0) * 100.0, 0.0), 100.0)
+    place_score = min(max(((4.5 - bayes_place) / 2.5) * 100.0, 0.0), 100.0)
+    pick_score = min(max((math.log1p(pick_rate) / math.log1p(24.0)) * 100.0, 0.0), 100.0)
+
+    composite = round(win_score * 0.35 + place_score * 0.30 + pick_score * 0.35, 1)
+    return {
+        "pick_rate": pick_rate,
+        "bayes_placement": bayes_place,
+        "bayes_win_rate": bayes_win,
+        "composite_score": composite,
+    }
+
+
 # =============================================================================
-# 2. 공식 메타데이터 로더 (Data Dragon + CommunityDragon)
+# 4. Riot 공식 메타데이터 로더 (명칭 · 등급 · 아이콘 · 프리즘/전설 엄격 분리)
 # =============================================================================
-class OfficialMetadata:
+
+
+class GameMetadata:
+    """Riot Data Dragon(챔피언·아이템) + LCU cherry-augments.json(증강 명칭·등급) 로더"""
+
     def __init__(self) -> None:
         self.dd_version: str = "16.23.1"
-        self.champions_by_key: Dict[str, Dict[str, Any]] = {}
-        self.champ_lower_to_key: Dict[str, str] = {}
-
-        # 아이템 ID -> 메타데이터
+        self.champions_by_id: Dict[str, Dict[str, Any]] = {}
+        self.lower_champ_to_canonical: Dict[str, str] = {}
         self.items_by_id: Dict[int, Dict[str, Any]] = {}
-        # 전설템 한글명 -> 대표 DDragon ID (1000~6999 우선)
-        self.legendary_name_to_canonical_id: Dict[str, int] = {}
-        self.legendary_name_priority: Dict[str, int] = {}
-        # 프리즘 한글명 -> 대표 44xxxx ID
+
+        # 일반 전설급 vs 프리즘 ID/아이콘 완전 분리 매핑
+        self.item_name_to_latest_id: Dict[str, int] = {}
         self.prismatic_name_to_id: Dict[str, int] = {}
+        self.cdragon_item_icon_by_name: Dict[str, str] = {}
+        self.cdragon_prismatic_icon_by_name: Dict[str, str] = {}
 
-        # 증강 ID -> {id, name, rarity, icon}
+        self.prismatic_item_ids: Set[int] = set()
+        self.prismatic_item_names: Set[str] = set(KNOWN_PRISMATIC_ITEMS_KO)
+        self.legendary_item_names: Set[str] = set(FORCE_LEGENDARY_ITEMS_KO)
+        self.boot_item_names: Set[str] = set()
+
         self.augments_by_id: Dict[int, Dict[str, Any]] = {}
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Arena3v3Collector/2.0"})
+        self.augments_by_name: Dict[str, Dict[str, Any]] = {}
 
-    def load_all(self) -> None:
         self._load_ddragon()
-        self._load_cdragon_augments_and_items()
+        self._load_cdragon_arena()
+        self._reconcile_prismatic_and_legendary()
 
-    def _dd_item_icon(self, item_id: int) -> str:
-        return f"https://ddragon.leagueoflegends.com/cdn/{self.dd_version}/img/item/{item_id}.png"
+    def _dd_item_icon(self, iid: int) -> str:
+        return f"https://ddragon.leagueoflegends.com/cdn/{self.dd_version}/img/item/{iid}.png"
 
     def _load_ddragon(self) -> None:
+        log_print("[메타데이터] Riot Data Dragon 최신 버전·챔피언·아이템 명칭 동기화 중...")
         try:
-            ver_res = self.session.get(DDRAGON_VERSIONS_URL, timeout=15)
-            ver_res.raise_for_status()
-            versions = ver_res.json()
+            ver_resp = requests.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=20)
+            ver_resp.raise_for_status()
+            versions = ver_resp.json()
             if versions:
                 self.dd_version = versions[0]
-            log_print(f"Data Dragon 최신 버전: {self.dd_version}")
 
             champ_url = f"https://ddragon.leagueoflegends.com/cdn/{self.dd_version}/data/ko_KR/champion.json"
-            item_url = f"https://ddragon.leagueoflegends.com/cdn/{self.dd_version}/data/ko_KR/item.json"
-
-            champ_data = self.session.get(champ_url, timeout=20).json().get("data", {})
-            for cid, info in champ_data.items():
-                self.champions_by_key[cid] = {
-                    "champion_name": cid,
-                    "kr_name": info.get("name", cid),
-                    "roles": info.get("tags", ["Fighter"]),
+            champ_resp = requests.get(champ_url, timeout=25)
+            champ_resp.raise_for_status()
+            for key, info in (champ_resp.json().get("data") or {}).items():
+                self.champions_by_id[key] = {
+                    "id": key,
+                    "kr_name": info.get("name", key),
+                    "roles": info.get("tags") or ["Fighter"],
                 }
-                self.champ_lower_to_key[cid.lower()] = cid
+                self.lower_champ_to_canonical[key.lower()] = key
 
-            item_data = self.session.get(item_url, timeout=20).json().get("data", {})
-            for id_str, info in item_data.items():
+            item_url = f"https://ddragon.leagueoflegends.com/cdn/{self.dd_version}/data/ko_KR/item.json"
+            item_resp = requests.get(item_url, timeout=25)
+            item_resp.raise_for_status()
+            item_priority: Dict[str, int] = {}
+
+            for id_str, info in (item_resp.json().get("data") or {}).items():
                 try:
                     iid = int(id_str)
                 except ValueError:
                     continue
-                name = str(info.get("name", "")).strip()
+                name = str(info.get("name") or "").strip()
                 if not name:
                     continue
-                gold_total = int(info.get("gold", {}).get("total", 0) or 0)
-                tags = set(info.get("tags", []) or [])
-                into_list = info.get("into", []) or []
+
+                tags = set(info.get("tags") or [])
+                maps = info.get("maps") or {}
+                in_arena = bool(maps.get("30", False))
+                gold_total = int((info.get("gold") or {}).get("total") or 0)
+                into_list = info.get("into") or []
+
+                is_boots = "Boots" in tags
+                is_consumable = (
+                    (name in EXCLUDED_CORE_ITEMS_KO)
+                    or bool(info.get("consumed"))
+                    or ("Consumable" in tags)
+                    or ("Trinket" in tags)
+                )
+                is_starter = (iid in ARENA_STARTER_IDS) or (name in EXCLUDED_CORE_ITEMS_KO)
+                is_anvil_or_ornn = (220000 <= iid < 220100) or (7000 <= iid < 7100)
+
+                if is_boots:
+                    self.boot_item_names.add(name)
+
+                # 1) 프리즘 판별: 오직 440000~449999 대역 + 명목가 4000G(또는 0) + 전설 강제 목록 외
+                is_prismatic = (
+                    (440000 <= iid < 450000)
+                    and (not is_consumable)
+                    and (name not in FORCE_LEGENDARY_ITEMS_KO)
+                    and (gold_total == 4000 or gold_total == 0)
+                )
+
+                # 2) 일반 전설급 판별: 프리즘/신발/시작템/모루/오른걸작 제외, 2000G 이상 완성템(또는 여눈 진화템)
+                base_id = iid - 220000 if (220100 <= iid < 230000) else iid
+                is_tear_evolved = (iid in TEAR_EVOLVED_IDS) or (base_id in TEAR_EVOLVED_IDS)
+                is_legendary = (
+                    (not is_prismatic)
+                    and (not is_consumable)
+                    and (not is_boots)
+                    and (not is_starter)
+                    and (not is_anvil_or_ornn)
+                    and (not (440000 <= iid < 450000))
+                    and (
+                        is_tear_evolved
+                        or (220100 <= iid < 230000 and (gold_total >= 2000 or gold_total == 0))
+                        or (1000 <= iid < 10000 and gold_total >= 2000 and len(into_list) == 0)
+                    )
+                )
+
+                if is_prismatic:
+                    self.prismatic_item_ids.add(iid)
+                    if in_arena or name in KNOWN_PRISMATIC_ITEMS_KO:
+                        self.prismatic_item_names.add(name)
+                        self.prismatic_name_to_id[name] = iid
+                else:
+                    # 일반 아이템용 대표 ID (협곡 1000~6999 우선 > 아레나 22xxxx)
+                    if 1000 <= iid < 7000:
+                        prio = 3
+                    elif 220100 <= iid < 230000:
+                        prio = 2
+                    else:
+                        prio = 1
+                    if name not in self.item_name_to_latest_id or prio > item_priority.get(name, 0):
+                        self.item_name_to_latest_id[name] = iid
+                        item_priority[name] = prio
+
+                    if is_legendary and (in_arena or (220100 <= iid < 230000)):
+                        self.legendary_item_names.add(name)
 
                 self.items_by_id[iid] = {
                     "id": iid,
                     "name": name,
-                    "gold_total": gold_total,
-                    "tags": tags,
-                    "into": into_list,
-                    "icon": self._dd_item_icon(iid),
+                    "icon_url": self._dd_item_icon(iid),
+                    "is_completed": is_legendary,
+                    "is_legendary": is_legendary,
+                    "is_boots": is_boots,
+                    "is_consumable": is_consumable or is_starter or is_anvil_or_ornn,
+                    "is_prismatic": is_prismatic,
                 }
 
-                if 440000 <= iid < 450000:
-                    self.prismatic_name_to_id[name] = iid
-                elif (1000 <= iid < 7000) or (220100 <= iid < 230000):
-                    prio = 3 if (1000 <= iid < 7000) else 2
-                    if prio > self.legendary_name_priority.get(name, 0):
-                        self.legendary_name_to_canonical_id[name] = iid
-                        self.legendary_name_priority[name] = prio
-
             log_print(
-                f"Data Dragon 로드 완료: 챔피언 {len(self.champions_by_key)}명, "
-                f"아이템 {len(self.items_by_id)}개 (프리즘 {len(self.prismatic_name_to_id)}종)"
+                f"  -> Data Dragon v{self.dd_version}: 챔피언 {len(self.champions_by_id)}명, "
+                f"아이템 {len(self.items_by_id)}개 동기화 완료"
             )
-        except Exception as e:
-            log_print(f"[경고] Data Dragon 로드 실패: {e}")
+        except Exception as exc:
+            log_print(f"  [경고] Data Dragon 로드 실패: {exc}")
 
-    @staticmethod
-    def _calibrate_rarity_codes(raw_augs: List[Dict[str, Any]]) -> Dict[int, str]:
-        votes: Dict[int, Dict[str, int]] = defaultdict(lambda: {"실버": 0, "골드": 0, "프리즘": 0})
-        codes: Set[int] = set()
-        for a in raw_augs:
-            r = a.get("rarity")
-            if isinstance(r, int):
-                codes.add(r)
-                name = normalize_augment_name(a.get("nameTRA") or a.get("name") or "")
-                known = OFFICIAL_AUGMENT_RARITY_KO.get(name)
-                if known:
-                    votes[r][known] += 1
-        result: Dict[int, str] = {}
-        for code, cnts in votes.items():
-            best_label, best_val = max(cnts.items(), key=lambda x: x[1])
-            if best_val > 0:
-                result[code] = best_label
-        sorted_codes = sorted(codes)
-        if len(result) < 3 and len(sorted_codes) >= 3:
-            if 4 in codes and 8 in codes:
-                result.setdefault(0, "실버")
-                result.setdefault(1, "실버")
-                result.setdefault(4, "골드")
-                result.setdefault(8, "프리즘")
-            else:
-                result.setdefault(sorted_codes[0], "실버")
-                result.setdefault(sorted_codes[1], "골드")
-                result.setdefault(sorted_codes[2], "프리즘")
-        return result
+    def _load_cdragon_arena(self) -> None:
+        log_print("[메타데이터] Riot LCU cherry-augments.json (ko_kr) 증강 명칭·등급 동기화 중...")
 
-    @staticmethod
-    def _resolve_rarity(raw_rarity: Any, aug_name: str, num_map: Dict[int, str]) -> str:
-        clean = normalize_augment_name(aug_name)
-        if clean in OFFICIAL_AUGMENT_RARITY_KO:
-            return OFFICIAL_AUGMENT_RARITY_KO[clean]
-        if isinstance(raw_rarity, str):
-            low = raw_rarity.strip().lower()
-            if "prism" in low or "프리즘" in low:
-                return "프리즘"
-            if "gold" in low or "골드" in low:
-                return "골드"
-            if "silver" in low or "실버" in low:
-                return "실버"
-            if low.isdigit():
-                raw_rarity = int(low)
-        if isinstance(raw_rarity, int):
-            if raw_rarity in num_map:
-                return num_map[raw_rarity]
-            if raw_rarity in (2, 8):
-                return "프리즘"
-            if raw_rarity in (1, 4):
-                return "골드"
-        return "실버"
-
-    def _load_cdragon_augments_and_items(self) -> None:
-        # 1) cherry-augments.json
+        # 1순위: Riot 클라이언트 공식 cherry-augments.json
         try:
-            res = self.session.get(CHERRY_AUGMENTS_KO_URL, timeout=20)
-            if res.ok:
-                raw_list = res.json()
-                if isinstance(raw_list, list):
-                    num_map = self._calibrate_rarity_codes(raw_list)
-                    for aug in raw_list:
-                        aid = int(aug.get("id", 0) or 0)
-                        name = normalize_augment_name(aug.get("nameTRA") or aug.get("name") or "")
-                        if not aid or not name or name == "???":
-                            continue
-                        icon = normalize_cdragon_asset(
-                            aug.get("augmentSmallIconPath") or aug.get("augmentLargeIconPath") or ""
-                        )
-                        self.augments_by_id[aid] = {
-                            "id": aid,
-                            "name": name,
-                            "rarity": self._resolve_rarity(aug.get("rarity"), name, num_map),
-                            "icon": icon,
-                        }
-        except Exception as e:
-            log_print(f"[경고] cherry-augments 로드 실패: {e}")
+            cherry_resp = requests.get(CHERRY_AUGMENTS_KO_URL, timeout=25)
+            cherry_resp.raise_for_status()
+            cherry_list = cherry_resp.json()
+            if isinstance(cherry_list, list):
+                cherry_num_map = calibrate_numeric_rarity_map(cherry_list)
+                for aug in cherry_list:
+                    try:
+                        aug_id = int(aug.get("id", 0))
+                    except (TypeError, ValueError):
+                        continue
+                    name = normalize_augment_name(aug.get("nameTRA") or aug.get("name") or "")
+                    if not aug_id or not name or name == "???":
+                        continue
+                    rarity_ko = normalize_rarity_ko(aug.get("rarity"), cherry_num_map, aug_name=name)
+                    icon_url = normalize_cdragon_asset(
+                        aug.get("augmentSmallIconPath") or aug.get("augmentLargeIconPath") or ""
+                    )
+                    entry = {
+                        "id": aug_id,
+                        "name": name,
+                        "rarity": rarity_ko,
+                        "icon_url": icon_url,
+                    }
+                    self.augments_by_id[aug_id] = entry
+                    self.augments_by_name[name] = entry
 
-        # 2) cdragon/arena/ko_kr.json (증강 보강 + 프리즘/아레나 아이템 보강)
+                dist = Counter(a["rarity"] for a in self.augments_by_id.values())
+                log_print(f"  -> [1순위] cherry-augments.json {len(self.augments_by_id)}개 로드 (분포: {dict(dist)})")
+        except Exception as exc:
+            log_print(f"  [경고] cherry-augments.json 로드 실패 -> cdragon/arena 폴백: {exc}")
+
+        # 2순위: CommunityDragon arena/ko_kr.json (프리즘 아이콘 + 누락 증강 보완)
         try:
-            res = self.session.get(CDRAGON_ARENA_KO_URL, timeout=20)
-            if res.ok:
-                arena_json = res.json()
-                raw_augs = arena_json.get("augments", []) or []
-                num_map = self._calibrate_rarity_codes(raw_augs)
-                for aug in raw_augs:
-                    aid = int(aug.get("id", 0) or 0)
-                    name = normalize_augment_name(aug.get("name") or "")
-                    if not aid or not name or name == "???":
-                        continue
-                    icon = normalize_cdragon_asset(aug.get("iconSmall") or aug.get("iconLarge") or "")
-                    if aid not in self.augments_by_id:
-                        self.augments_by_id[aid] = {
-                            "id": aid,
-                            "name": name,
-                            "rarity": self._resolve_rarity(aug.get("rarity"), name, num_map),
-                            "icon": icon,
-                        }
-                    elif not self.augments_by_id[aid].get("icon") and icon:
-                        self.augments_by_id[aid]["icon"] = icon
+            resp = requests.get(CDRAGON_ARENA_KO_URL, timeout=25)
+            resp.raise_for_status()
+            payload = resp.json()
 
-                for it in arena_json.get("items", []) or []:
-                    iid = int(it.get("id", 0) or 0)
-                    name = str(it.get("name", "")).strip()
-                    if not iid or not name:
-                        continue
-                    cd_icon = normalize_cdragon_asset(it.get("iconPath") or "")
-                    if iid in self.items_by_id:
-                        if not self.items_by_id[iid].get("icon") and cd_icon:
-                            self.items_by_id[iid]["icon"] = cd_icon
-                    else:
-                        self.items_by_id[iid] = {
-                            "id": iid,
-                            "name": name,
-                            "gold_total": int(it.get("price", 0) or 0),
-                            "tags": set(),
-                            "into": [],
-                            "icon": self._dd_item_icon(iid) if (440000 <= iid < 450000) else cd_icon,
-                        }
-                    if 440000 <= iid < 450000:
-                        self.prismatic_name_to_id.setdefault(name, iid)
+            raw_augments = payload.get("augments", [])
+            numeric_rarity_map = calibrate_numeric_rarity_map(raw_augments)
 
+            for aug in raw_augments:
+                try:
+                    aug_id = int(aug.get("id", 0))
+                except (TypeError, ValueError):
+                    continue
+                name = normalize_augment_name(aug.get("name", ""))
+                if not aug_id or not name or name == "???":
+                    continue
+
+                rarity_ko = normalize_rarity_ko(aug.get("rarity"), numeric_rarity_map, aug_name=name)
+                icon_url = normalize_cdragon_asset(aug.get("iconSmall") or aug.get("iconLarge") or "")
+
+                if aug_id in self.augments_by_id:
+                    if not self.augments_by_id[aug_id].get("icon_url") and icon_url:
+                        self.augments_by_id[aug_id]["icon_url"] = icon_url
+                    continue
+
+                entry = {
+                    "id": aug_id,
+                    "name": name,
+                    "rarity": rarity_ko,
+                    "icon_url": icon_url,
+                }
+                self.augments_by_id[aug_id] = entry
+                if name not in self.augments_by_name:
+                    self.augments_by_name[name] = entry
+
+            for item in payload.get("items", []):
+                try:
+                    iid = int(item.get("id", 0))
+                except (TypeError, ValueError):
+                    continue
+                name = str(item.get("name", "")).strip()
+                if not iid or not name:
+                    continue
+
+                icon_url = normalize_cdragon_asset(item.get("iconPath") or "")
+                if icon_url:
+                    self.cdragon_item_icon_by_name[name] = icon_url
+
+                # 반드시 44xxxx ID이면서 일반 전설템 목록에 없는 경우만 프리즘으로 인정
+                is_prismatic = (
+                    (440000 <= iid < 450000)
+                    and (name not in EXCLUDED_CORE_ITEMS_KO)
+                    and (name not in FORCE_LEGENDARY_ITEMS_KO)
+                    and (name not in self.legendary_item_names)
+                )
+                if is_prismatic:
+                    self.prismatic_item_ids.add(iid)
+                    self.prismatic_item_names.add(name)
+                    self.prismatic_name_to_id.setdefault(name, iid)
+                    if icon_url:
+                        self.cdragon_prismatic_icon_by_name[name] = icon_url
+
+                existing = self.items_by_id.get(iid)
+                if existing:
+                    if is_prismatic:
+                        existing["is_prismatic"] = True
+                        if not existing.get("icon_url") and icon_url:
+                            existing["icon_url"] = icon_url
+                else:
+                    is_leg_fallback = (
+                        (not is_prismatic)
+                        and (name not in EXCLUDED_CORE_ITEMS_KO)
+                        and (name not in self.boot_item_names)
+                        and (iid not in ARENA_STARTER_IDS)
+                        and (not (220000 <= iid < 220100))
+                        and (not (7000 <= iid < 7100))
+                        and (not (440000 <= iid < 450000))
+                        and int(item.get("price") or 0) >= 2000
+                    )
+                    self.items_by_id[iid] = {
+                        "id": iid,
+                        "name": name,
+                        "icon_url": self._dd_item_icon(iid) if is_prismatic else icon_url,
+                        "is_completed": is_leg_fallback,
+                        "is_legendary": is_leg_fallback,
+                        "is_boots": name in self.boot_item_names,
+                        "is_consumable": name in EXCLUDED_CORE_ITEMS_KO,
+                        "is_prismatic": is_prismatic,
+                    }
+
+            final_dist = Counter(a["rarity"] for a in self.augments_by_id.values())
             log_print(
-                f"CommunityDragon 로드 완료: 증강 {len(self.augments_by_id)}개, "
-                f"총 아이템 {len(self.items_by_id)}개"
+                f"  -> 최종 공식 증강 {len(self.augments_by_id)}개 (분포: {dict(final_dist)}), "
+                f"프리즘 {len(self.prismatic_item_names)}종 / 전설 {len(self.legendary_item_names)}종 동기화 완료"
             )
-        except Exception as e:
-            log_print(f"[경고] cdragon/arena 로드 실패: {e}")
+        except Exception as exc:
+            log_print(f"  [경고] CommunityDragon 아레나 데이터 로드 실패: {exc}")
 
-    # -------------------------------------------------------------------------
-    # 핵심: 프리즘(44xxxx) vs 일반 전설급 코어템 엄격 분류
-    # -------------------------------------------------------------------------
-    def classify_item(self, item_id: int) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    def _reconcile_prismatic_and_legendary(self) -> None:
+        """아레나 활성 전설급 아이템(지배자의 피갑옷·워모그의 갑옷 등)이 프리즘 목록에 섞이지 않도록 최종 정리합니다."""
+        protected_legendaries = self.legendary_item_names | FORCE_LEGENDARY_ITEMS_KO
+        for lname in protected_legendaries:
+            self.prismatic_item_names.discard(lname)
+            self.prismatic_name_to_id.pop(lname, None)
+            self.cdragon_prismatic_icon_by_name.pop(lname, None)
+
+        for iid, info in self.items_by_id.items():
+            if info["name"] in protected_legendaries and not (440000 <= iid < 450000):
+                info["is_prismatic"] = False
+                self.prismatic_item_ids.discard(iid)
+
+    def classify_item_by_id(self, iid: int) -> Tuple[Optional[str], Optional[str], Optional[int]]:
         """
-        반환값:
-          ("prismatic", {id, name, icon})
-          ("legendary", {id, name, icon})
-          (None, None) -> 신발/시작템/모루/하위템 등 제외
+        실제 매치의 아이템 ID로 (분류, 공식명칭, 대표ID)를 엄격 판별합니다.
+        반환: ("prismatic" | "legendary" | None, name, canonical_id)
         """
-        if not item_id or item_id <= 0:
+        if not iid or iid <= 0:
+            return None, None, None
+
+        # 1) 프리즘: 오직 440000~449999 대역
+        if 440000 <= iid < 450000:
+            info = self.items_by_id.get(iid)
+            if not info:
+                return None, None, None
+            name = info["name"]
+            if name in EXCLUDED_CORE_ITEMS_KO or name in FORCE_LEGENDARY_ITEMS_KO:
+                return None, None, None
+            if name in self.legendary_item_names:
+                return "legendary", name, self.item_name_to_latest_id.get(name, iid)
+            canon_id = self.prismatic_name_to_id.get(name, iid)
+            return "prismatic", name, canon_id
+
+        # 2) 시작템 / 모루 / 오른 걸작템 제외
+        if iid in ARENA_STARTER_IDS or (220000 <= iid < 220100) or (7000 <= iid < 7100):
+            return None, None, None
+
+        info = self.items_by_id.get(iid)
+        if not info and (220100 <= iid < 230000):
+            info = self.items_by_id.get(iid - 220000)
+        if not info:
+            return None, None, None
+
+        name = info["name"]
+        if name in EXCLUDED_CORE_ITEMS_KO or info.get("is_consumable") or info.get("is_boots") or name in self.boot_item_names:
+            return None, None, None
+
+        if info.get("is_legendary") or info.get("is_completed") or name in self.legendary_item_names:
+            canon_id = self.item_name_to_latest_id.get(name, iid)
+            return "legendary", name, canon_id
+
+        return None, None, None
+
+    def classify_item_by_name(self, name: str, raw_id: Optional[int] = None) -> Tuple[Optional[str], Optional[int]]:
+        """
+        기존 체크포인트 레코드의 아이템명(및 선택적 ID)을 기준으로 프리즘/전설급을 재분류합니다.
+        (지배자의 피갑옷·워모그의 갑옷·신발 등 기존 오분류를 자동 교정)
+        """
+        cleaned = str(name or "").strip()
+        if not cleaned or cleaned in EXCLUDED_CORE_ITEMS_KO or cleaned in self.boot_item_names:
             return None, None
 
-        meta = self.items_by_id.get(item_id)
+        if cleaned in FORCE_LEGENDARY_ITEMS_KO or cleaned in self.legendary_item_names:
+            return "legendary", self.item_name_to_latest_id.get(cleaned, raw_id)
 
-        # 1) 프리즘 아이템: Riot 공식 아레나 프리즘 ID 대역 440000 ~ 449999만 인정
-        if 440000 <= item_id < 450000:
-            if not meta:
-                return None, None
-            tags = meta.get("tags", set())
-            if "Consumable" in tags or "Trinket" in tags:
-                return None, None
-            gold_total = int(meta.get("gold_total", 0) or 0)
-            if gold_total and gold_total != 4000:
-                return None, None
-            name = meta["name"]
-            canon_id = self.prismatic_name_to_id.get(name, item_id)
-            return "prismatic", {
-                "id": canon_id,
-                "name": name,
-                "icon": self._dd_item_icon(canon_id),
-            }
-
-        # 2) 시작템 / 모루(220000~220099) / 오른 걸작템(7000~7099) / 저가 잡템 제외
-        if item_id in ARENA_STARTER_IDS:
-            return None, None
-        if 220000 <= item_id < 220100:
-            return None, None
-        if 7000 <= item_id < 7100:
-            return None, None
-        if item_id < 1000:
-            return None, None
-
-        # 아레나 복사 전설템(22xxxx)의 메타가 없으면 기본 협곡 ID(xxxx) 참조
-        base_id = item_id - 220000 if 220100 <= item_id < 230000 else item_id
-        if not meta and base_id != item_id:
-            meta = self.items_by_id.get(base_id)
-        if not meta:
-            return None, None
-
-        tags = meta.get("tags", set())
-        if tags & EXCLUDED_ITEM_TAGS:
-            return None, None
-
-        # 여눈 진화 완성템은 purchasable 여부와 무관하게 전설급으로 인정
-        is_legendary = False
-        if item_id in TEAR_EVOLVED_IDS or base_id in TEAR_EVOLVED_IDS:
-            is_legendary = True
-        else:
-            gold_total = int(meta.get("gold_total", 0) or 0)
-            into_list = meta.get("into", []) or []
-            if 220100 <= item_id < 230000:
-                is_legendary = gold_total >= 2000 or gold_total == 0
-            else:
-                is_legendary = gold_total >= 2000 and len(into_list) == 0
-
-        if not is_legendary:
-            return None, None
-
-        name = meta["name"]
-        # 협곡 ID(2501)와 아레나 ID(222501)를 하나의 대표 ID로 통합
-        canon_id = self.legendary_name_to_canonical_id.get(name)
-        if not canon_id:
-            canon_id = base_id if base_id in self.items_by_id else item_id
-
-        icon = self._dd_item_icon(canon_id) if canon_id in self.items_by_id else meta.get("icon", "")
-        return "legendary", {
-            "id": canon_id,
-            "name": name,
-            "icon": icon,
-        }
-
-
-# =============================================================================
-# 3. Riot API 클라이언트
-# =============================================================================
-class RiotApiClient:
-    def __init__(self, api_key: str, request_delay: float = 1.25) -> None:
-        self.api_key = api_key
-        self.request_delay = request_delay
-        self.last_req_ts = 0.0
-        self.auth_failed = False
-        self.session = requests.Session()
-        self.session.headers.update({"X-Riot-Token": api_key})
-
-    def get_json(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
-        if self.auth_failed:
-            return None
-
-        for attempt in range(5):
-            elapsed = time.time() - self.last_req_ts
-            if elapsed < self.request_delay:
-                time.sleep(self.request_delay - elapsed)
-            self.last_req_ts = time.time()
-
+        if raw_id is not None:
             try:
-                res = self.session.get(url, params=params, timeout=20)
-            except requests.RequestException as e:
-                wait = min(10, 2 * (attempt + 1))
-                log_print(f"[네트워크 오류] {e} ({wait}s 후 재시도)")
-                time.sleep(wait)
-                continue
+                iid = int(raw_id)
+                if 440000 <= iid < 450000:
+                    return "prismatic", self.prismatic_name_to_id.get(cleaned, iid)
+            except (TypeError, ValueError):
+                pass
 
-            if res.status_code == 200:
-                return res.json()
-            if res.status_code == 429:
-                retry_after = int(res.headers.get("Retry-After", "5") or 5) + 1
-                log_print(f"[Rate Limit 429] {retry_after}초 대기...")
-                time.sleep(retry_after)
-                continue
-            if res.status_code in (401, 403):
-                log_print(f"[치명적 오류] Riot API 키 만료 또는 권한 거부 (HTTP {res.status_code})")
-                self.auth_failed = True
-                return None
-            if res.status_code == 404:
-                return None
-            if res.status_code >= 500:
-                time.sleep(3 * (attempt + 1))
-                continue
-            return None
+        if cleaned in self.prismatic_item_names:
+            return "prismatic", self.prismatic_name_to_id.get(cleaned)
+
+        mapped_id = self.item_name_to_latest_id.get(cleaned)
+        if mapped_id:
+            info = self.items_by_id.get(mapped_id)
+            if info and (info.get("is_legendary") or info.get("is_completed")) and not info.get("is_boots"):
+                return "legendary", mapped_id
+
+        return None, None
+
+    def resolve_champion_key(self, raw_key: str) -> str:
+        """챔피언 ID 대소문자 정규화 (예: FiddleSticks -> Fiddlesticks)"""
+        cleaned = str(raw_key or "").strip()
+        if not cleaned:
+            return ""
+        return self.lower_champ_to_canonical.get(cleaned.lower(), cleaned)
+
+    def resolve_augment(self, aug_id: int) -> Optional[Dict[str, Any]]:
+        """증강 ID로 Riot 공식 한국어 증강 정보를 조회합니다."""
+        return self.augments_by_id.get(int(aug_id))
+
+
+# =============================================================================
+# 5. Riot Match-V5 API 클라이언트
+# =============================================================================
+
+
+class RiotApiClient:
+    """Riot Account-V1 / Match-V5 안전 호출 래퍼 (429 자동 대기 지원)"""
+
+    def __init__(self, api_key: str, routing_region: str = "asia") -> None:
+        self.api_key = api_key.strip()
+        self.routing_region = routing_region.strip().lower()
+        self.session = requests.Session()
+        self.session.headers.update({"X-Riot-Token": self.api_key})
+
+    def _get_json(self, url: str, params: Optional[Dict[str, Any]] = None, retries: int = 5) -> Optional[Any]:
+        for attempt in range(retries):
+            try:
+                resp = self.session.get(url, params=params, timeout=20)
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code == 429:
+                    wait_sec = int(resp.headers.get("Retry-After", 5)) + 1
+                    log_print(f"  [429 레이트 리밋] {wait_sec}초 대기 후 재시도...")
+                    time.sleep(wait_sec)
+                    continue
+                if resp.status_code in (401, 403):
+                    raise PermissionError(f"Riot API 키 인증 실패 (HTTP {resp.status_code}).")
+                if resp.status_code == 404:
+                    return None
+                time.sleep(1.5 * (attempt + 1))
+            except requests.RequestException:
+                time.sleep(2.0 * (attempt + 1))
         return None
 
-    def fetch_seed_puuids(self, max_seeds: int = 120) -> List[str]:
-        puuids: List[str] = []
-        seen: Set[str] = set()
-        endpoints = [
-            f"{PLATFORM_HOST}/lol/league/v4/challengerleagues/by-queue/RANKED_SOLO_5x5",
-            f"{PLATFORM_HOST}/lol/league/v4/grandmasterleagues/by-queue/RANKED_SOLO_5x5",
-            f"{PLATFORM_HOST}/lol/league/v4/masterleagues/by-queue/RANKED_SOLO_5x5",
-        ]
-        for ep in endpoints:
-            data = self.get_json(ep)
-            if not data or self.auth_failed:
-                break
-            entries = data.get("entries", []) or []
-            for entry in entries:
-                puuid = entry.get("puuid")
-                if puuid and puuid not in seen:
-                    seen.add(puuid)
-                    puuids.append(puuid)
-                    if len(puuids) >= max_seeds:
-                        return puuids
-        return puuids
+    def get_puuid_by_riot_id(self, game_name: str, tag_line: str) -> Optional[str]:
+        url = (
+            f"https://{self.routing_region}.api.riotgames.com/"
+            f"riot/account/v1/accounts/by-riot-id/{requests.utils.quote(game_name)}/{requests.utils.quote(tag_line)}"
+        )
+        data = self._get_json(url)
+        return data.get("puuid") if isinstance(data, dict) else None
 
-    def fetch_arena_match_ids(self, puuid: str, count: int = 30) -> List[str]:
-        url = f"{REGIONAL_HOST}/lol/match/v5/matches/by-puuid/{puuid}/ids"
-        data = self.get_json(url, params={"queue": ARENA_QUEUE_ID, "start": 0, "count": count})
+    def get_match_ids_by_puuid(self, puuid: str, count: int = 40) -> List[str]:
+        url = f"https://{self.routing_region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
+        data = self._get_json(url, params={"start": 0, "count": count})
         return data if isinstance(data, list) else []
 
-    def fetch_match_detail(self, match_id: str) -> Optional[Dict[str, Any]]:
-        url = f"{REGIONAL_HOST}/lol/match/v5/matches/{match_id}"
-        data = self.get_json(url)
+    def get_match(self, match_id: str) -> Optional[Dict[str, Any]]:
+        url = f"https://{self.routing_region}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+        data = self._get_json(url)
         return data if isinstance(data, dict) else None
 
 
 # =============================================================================
-# 4. 체크포인트 입출력 (기존 .jsonl & .jsonl.gz 완벽 호환)
+# 6. 3v3 아레나 매치 파싱 및 체크포인트 로드/저장 (gzip 압축 지원)
 # =============================================================================
-def extract_compact_match(raw_obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Riot 원본 Match-v5 JSON 또는 기존 압축 레코드를 표준 경량 매치 딕셔너리로 정규화.
-    아레나 3v3(6팀 · 최대 18명) 판별 포함.
-    """
-    # 형식 A: Riot Match-v5 원본 {"metadata": ..., "info": ...}
-    if "info" in raw_obj and isinstance(raw_obj["info"], dict):
-        info = raw_obj["info"]
-        meta = raw_obj.get("metadata", {}) or {}
-        match_id = str(meta.get("matchId") or raw_obj.get("match_id") or "").strip()
-        if not match_id:
-            return None
-
-        game_mode = str(info.get("gameMode", "")).upper()
-        queue_id = int(info.get("queueId", 0) or 0)
-        if queue_id != ARENA_QUEUE_ID and game_mode != "CHERRY":
-            return None
-
-        raw_parts = info.get("participants", []) or []
-        if not raw_parts:
-            return None
-
-        placements = [int(p.get("placement", 0) or 0) for p in raw_parts if int(p.get("placement", 0) or 0) > 0]
-        max_place = max(placements) if placements else 0
-        # 3v3 (6팀 · 18인) 필터: 참가자 18명 또는 최대 등수 6 이하 (2v2 8팀 제외)
-        if len(raw_parts) != 18 and not (1 <= max_place <= 6 and len(raw_parts) >= 15):
-            return None
-
-        compact_parts = []
-        for p in raw_parts:
-            champ = str(p.get("championName", "")).strip()
-            placement = int(p.get("placement", 0) or 0)
-            if not champ or placement <= 0 or placement > 6:
-                continue
-            items = []
-            for slot in range(7):
-                iid = int(p.get(f"item{slot}", 0) or 0)
-                if iid > 0:
-                    items.append(iid)
-            augs = []
-            for slot in range(1, 7):
-                aid = int(p.get(f"playerAugment{slot}", 0) or 0)
-                if aid > 0:
-                    augs.append(aid)
-            compact_parts.append({
-                "puuid": p.get("puuid", ""),
-                "champ": champ,
-                "placement": placement,
-                "team": int(p.get("playerSubteamId", 0) or 0),
-                "items": items,
-                "augs": augs,
-                "dmg": int(p.get("totalDamageDealtToChampions", 0) or 0),
-            })
-
-        if not compact_parts:
-            return None
-
-        return {
-            "match_id": match_id,
-            "patch": parse_patch(info.get("gameVersion", "")),
-            "ts": int(info.get("gameCreation", 0) or 0),
-            "participants": compact_parts,
-        }
-
-    # 형식 B: 이미 경량화된 매치 레코드 {"match_id": ..., "participants": [...]}
-    if "participants" in raw_obj and isinstance(raw_obj["participants"], list):
-        match_id = str(raw_obj.get("match_id") or raw_obj.get("matchId") or "").strip()
-        if not match_id:
-            return None
-        patch = str(raw_obj.get("patch") or parse_patch(raw_obj.get("gameVersion", ""))).strip()
-        norm_parts = []
-        for p in raw_obj["participants"]:
-            if not isinstance(p, dict):
-                continue
-            champ = str(p.get("champ") or p.get("championName") or p.get("champion_name") or "").strip()
-            placement = int(p.get("placement", 0) or 0)
-            if not champ or placement <= 0 or placement > 6:
-                continue
-            items = p.get("items")
-            if not isinstance(items, list):
-                items = [int(p.get(f"item{i}", 0) or 0) for i in range(7) if int(p.get(f"item{i}", 0) or 0) > 0]
-            augs = p.get("augs") if isinstance(p.get("augs"), list) else p.get("augments")
-            if not isinstance(augs, list):
-                augs = [
-                    int(p.get(f"playerAugment{i}", 0) or 0)
-                    for i in range(1, 7)
-                    if int(p.get(f"playerAugment{i}", 0) or 0) > 0
-                ]
-            norm_parts.append({
-                "puuid": p.get("puuid", ""),
-                "champ": champ,
-                "placement": placement,
-                "team": int(p.get("team") or p.get("playerSubteamId") or p.get("subteam_id") or 0),
-                "items": [int(x) for x in items if str(x).isdigit() and int(x) > 0],
-                "augs": [int(x) for x in augs if str(x).isdigit() and int(x) > 0],
-                "dmg": int(p.get("dmg") or p.get("damage") or p.get("totalDamageDealtToChampions") or 0),
-            })
-        if not norm_parts:
-            return None
-        return {
-            "match_id": match_id,
-            "patch": patch or "unknown",
-            "ts": int(raw_obj.get("ts") or raw_obj.get("game_creation") or 0),
-            "participants": norm_parts,
-        }
-
-    return None
 
 
-def load_existing_checkpoint() -> Dict[str, Dict[str, Any]]:
-    matches: Dict[str, Dict[str, Any]] = {}
+def parse_arena_3v3_match(
+    match_json: Dict[str, Any],
+    meta: GameMetadata,
+    target_queue_ids: Set[int],
+    target_patches: Set[str],
+) -> List[Dict[str, Any]]:
+    """Match-V5 응답에서 3v3(6팀 18인) 아레나 참가자 데이터를 추출합니다."""
+    info = match_json.get("info") or {}
+    metadata = match_json.get("metadata") or {}
+    match_id = str(metadata.get("matchId") or "")
+    queue_id = int(info.get("queueId") or 0)
 
-    def _read_stream(stream: Any, label: str) -> None:
-        loaded = 0
-        for line in stream:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            compact = extract_compact_match(obj)
-            if compact and compact["match_id"] not in matches:
-                matches[compact["match_id"]] = compact
-                loaded += 1
-        log_print(f"{label}에서 {loaded:,}건 로드 완료")
+    if target_queue_ids and queue_id not in target_queue_ids:
+        return []
 
-    if CHECKPOINT_GZ_PATH.exists():
-        with gzip.open(CHECKPOINT_GZ_PATH, "rt", encoding="utf-8") as f:
-            _read_stream(f, CHECKPOINT_GZ_PATH.name)
+    patch = extract_patch_version(info.get("gameVersion", ""))
+    if target_patches and patch not in target_patches:
+        return []
 
-    if CHECKPOINT_LEGACY_PATH.exists():
-        with open(CHECKPOINT_LEGACY_PATH, "rt", encoding="utf-8") as f:
-            _read_stream(f, CHECKPOINT_LEGACY_PATH.name)
+    participants = info.get("participants") or []
+    subteams: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for p in participants:
+        st_id = int(p.get("playerSubteamId") or 0)
+        if st_id > 0:
+            subteams[st_id].append(p)
 
-    return matches
+    # 3인 1팀(3v3 아레나) 검증
+    if not subteams or any(len(members) != 3 for members in subteams.values()):
+        return []
 
+    game_creation_ms = int(info.get("gameCreation") or 0)
+    game_time = (
+        datetime.fromtimestamp(game_creation_ms / 1000.0, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if game_creation_ms
+        else ""
+    )
 
-def save_compressed_checkpoint(matches: Dict[str, Dict[str, Any]]) -> None:
-    tmp_path = CHECKPOINT_GZ_PATH.with_suffix(".jsonl.gz.tmp")
-    with gzip.open(tmp_path, "wt", encoding="utf-8", compresslevel=6) as f:
-        for m in matches.values():
-            # 저장 용량 절감을 위해 puuid는 제외하지 않고 유지하되 불필요 공백 제거
-            f.write(json.dumps(m, ensure_ascii=False, separators=(",", ":")) + "\n")
-    tmp_path.replace(CHECKPOINT_GZ_PATH)
-
-    if CHECKPOINT_LEGACY_PATH.exists():
-        try:
-            CHECKPOINT_LEGACY_PATH.unlink()
-            log_print(f"구 비압축 파일 삭제 완료: {CHECKPOINT_LEGACY_PATH.name}")
-        except OSError:
-            pass
-
-    size_mb = CHECKPOINT_GZ_PATH.stat().st_size / (1024 * 1024)
-    log_print(f"압축 체크포인트 저장 완료: {CHECKPOINT_GZ_PATH.name} ({len(matches):,}매치, {size_mb:.2f} MB)")
-
-
-# =============================================================================
-# 5. 통계 집계 및 JSON 빌드 (프리즘/전설 분리 + 픽률순 & 평균 등수 저장)
-# =============================================================================
-def _patch_sort_key(patch: str) -> Tuple[int, int]:
-    parts = patch.split(".")
-    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-        return (int(parts[0]), int(parts[1]))
-    return (0, 0)
-
-
-def build_guide_json(matches: Dict[str, Dict[str, Any]], meta: OfficialMetadata) -> Dict[str, Any]:
-    # 챔피언별 집계 버킷
-    champ_overall = defaultdict(lambda: {"picks": 0, "place_sum": 0, "top3": 0, "win": 0, "dmg_sum": 0})
-    champ_patch = defaultdict(lambda: defaultdict(lambda: {"picks": 0, "place_sum": 0, "top3": 0, "win": 0, "dmg_sum": 0}))
-    champ_prismatics = defaultdict(lambda: defaultdict(lambda: {"id": 0, "name": "", "icon": "", "picks": 0, "place_sum": 0, "top3": 0, "win": 0}))
-    champ_legendaries = defaultdict(lambda: defaultdict(lambda: {"id": 0, "name": "", "icon": "", "picks": 0, "place_sum": 0, "top3": 0, "win": 0}))
-    champ_augments = defaultdict(lambda: defaultdict(lambda: {"id": 0, "name": "", "rarity": "실버", "icon": "", "picks": 0, "place_sum": 0, "top3": 0, "win": 0}))
-    champ_partners = defaultdict(lambda: defaultdict(lambda: {"picks": 0, "place_sum": 0, "top3": 0, "win": 0}))
-
-    all_patches: Set[str] = set()
-
-    for m in matches.values():
-        patch = m.get("patch", "unknown")
-        if patch != "unknown":
-            all_patches.add(patch)
-
-        parts = m.get("participants", [])
-        # 같은 팀(3인 1팀) 그룹화
-        teams: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
-        for p in parts:
-            t_id = int(p.get("team", 0) or 0)
-            if t_id > 0:
-                teams[t_id].append(p)
-
-        for p in parts:
-            raw_champ = str(p.get("champ", "")).strip()
-            c_key = meta.champ_lower_to_key.get(raw_champ.lower(), raw_champ)
-            placement = int(p.get("placement", 0) or 0)
-            if not c_key or placement <= 0 or placement > 6:
-                continue
-
-            is_top3 = 1 if placement <= 3 else 0
-            is_win = 1 if placement == 1 else 0
-            dmg = int(p.get("dmg", 0) or 0)
-
-            ov = champ_overall[c_key]
-            ov["picks"] += 1
-            ov["place_sum"] += placement
-            ov["top3"] += is_top3
-            ov["win"] += is_win
-            ov["dmg_sum"] += dmg
-
-            if patch != "unknown":
-                ps = champ_patch[c_key][patch]
-                ps["picks"] += 1
-                ps["place_sum"] += placement
-                ps["top3"] += is_top3
-                ps["win"] += is_win
-                ps["dmg_sum"] += dmg
-
-            # 1) 아이템 분류 집계 (한 판 내 동일 아이템 중복 집계 방지)
-            seen_prism: Set[str] = set()
-            seen_leg: Set[str] = set()
-            for raw_iid in p.get("items", []):
-                kind, info = meta.classify_item(int(raw_iid))
-                if not kind or not info:
-                    continue
-                iname = info["name"]
-                if kind == "prismatic":
-                    if iname in seen_prism:
-                        continue
-                    seen_prism.add(iname)
-                    bucket = champ_prismatics[c_key][iname]
-                    bucket["id"] = info["id"]
-                    bucket["name"] = iname
-                    bucket["icon"] = info["icon"]
-                    bucket["picks"] += 1
-                    bucket["place_sum"] += placement
-                    bucket["top3"] += is_top3
-                    bucket["win"] += is_win
-                elif kind == "legendary":
-                    if iname in seen_leg:
-                        continue
-                    seen_leg.add(iname)
-                    bucket = champ_legendaries[c_key][iname]
-                    bucket["id"] = info["id"]
-                    bucket["name"] = iname
-                    bucket["icon"] = info["icon"]
-                    bucket["picks"] += 1
-                    bucket["place_sum"] += placement
-                    bucket["top3"] += is_top3
-                    bucket["win"] += is_win
-
-            # 2) 증강체 집계
-            seen_augs: Set[str] = set()
-            for raw_aid in p.get("augs", []):
-                aug_info = meta.augments_by_id.get(int(raw_aid))
-                if not aug_info:
-                    continue
-                aname = aug_info["name"]
-                if aname in seen_augs:
-                    continue
-                seen_augs.add(aname)
-                ab = champ_augments[c_key][aname]
-                ab["id"] = aug_info["id"]
-                ab["name"] = aname
-                ab["rarity"] = aug_info["rarity"]
-                ab["icon"] = aug_info["icon"]
-                ab["picks"] += 1
-                ab["place_sum"] += placement
-                ab["top3"] += is_top3
-                ab["win"] += is_win
-
-            # 3) 3v3 팀 파트너 집계
-            t_id = int(p.get("team", 0) or 0)
-            if t_id > 0:
-                seen_mates: Set[str] = set()
-                for mate in teams.get(t_id, []):
-                    if mate is p:
-                        continue
-                    m_raw = str(mate.get("champ", "")).strip()
-                    m_key = meta.champ_lower_to_key.get(m_raw.lower(), m_raw)
-                    if not m_key or m_key == c_key or m_key in seen_mates:
-                        continue
-                    seen_mates.add(m_key)
-                    pb = champ_partners[c_key][m_key]
-                    pb["picks"] += 1
-                    pb["place_sum"] += placement
-                    pb["top3"] += is_top3
-                    pb["win"] += is_win
-
-    # 패치 최신 가중치 곡선 (index.html과 동일)
-    patches_desc = sorted(all_patches, key=_patch_sort_key, reverse=True)
-    weight_curve = [1.0, 0.75, 0.5, 0.35, 0.25]
-    patch_weights = {
-        p: weight_curve[min(i, len(weight_curve) - 1)]
-        for i, p in enumerate(patches_desc)
-    }
-
-    def _finalize_item_list(bucket_map: Dict[str, Dict[str, Any]], total_picks: int, limit: int = 20) -> List[Dict[str, Any]]:
-        rows = []
-        for b in bucket_map.values():
-            n = b["picks"]
-            if n <= 0:
-                continue
-            avg_p = round(b["place_sum"] / n, 2)
-            pick_rate = round(min(100.0, (n / total_picks) * 100.0), 1) if total_picks > 0 else 0.0
-            rows.append({
-                "id": b["id"],
-                "name": b["name"],
-                "icon": b["icon"],
-                "picks": n,
-                "pick_rate": pick_rate,
-                "avg_placement": avg_p,
-                "avg": avg_p,
-                "top3_rate": round((b["top3"] / n) * 100.0, 1),
-                "win_rate": round((b["win"] / n) * 100.0, 1),
-            })
-        # 픽률 내림차순 → 표본 수 내림차순 → 평균 등수 오름차순
-        rows.sort(key=lambda x: (-x["pick_rate"], -x["picks"], x["avg_placement"]))
-        return rows[:limit]
-
-    def _finalize_aug_list(bucket_map: Dict[str, Dict[str, Any]], total_picks: int, limit: int = 45) -> List[Dict[str, Any]]:
-        rows = []
-        for b in bucket_map.values():
-            n = b["picks"]
-            if n <= 0:
-                continue
-            avg_p = round(b["place_sum"] / n, 2)
-            pick_rate = round(min(100.0, (n / total_picks) * 100.0), 1) if total_picks > 0 else 0.0
-            rows.append({
-                "id": b["id"],
-                "name": b["name"],
-                "rarity": b["rarity"],
-                "icon": b["icon"],
-                "picks": n,
-                "pick_rate": pick_rate,
-                "avg_placement": avg_p,
-                "avg": avg_p,
-                "top3_rate": round((b["top3"] / n) * 100.0, 1),
-                "win_rate": round((b["win"] / n) * 100.0, 1),
-            })
-        rows.sort(key=lambda x: (-x["pick_rate"], -x["picks"], x["avg_placement"]))
-        return rows[:limit]
-
-    def _finalize_partner_list(bucket_map: Dict[str, Dict[str, Any]], total_picks: int, limit: int = 12) -> List[Dict[str, Any]]:
-        rows = []
-        for partner_key, b in bucket_map.items():
-            n = b["picks"]
-            if n < 2:
-                continue
-            avg_p = round(b["place_sum"] / n, 2)
-            pick_rate = round(min(100.0, (n / total_picks) * 100.0), 1) if total_picks > 0 else 0.0
-            p_meta = meta.champions_by_key.get(partner_key, {})
-            rows.append({
-                "champion_name": partner_key,
-                "kr_name": p_meta.get("kr_name", partner_key),
-                "picks": n,
-                "pick_rate": pick_rate,
-                "avg_placement": avg_p,
-                "avg": avg_p,
-                "top3_rate": round((b["top3"] / n) * 100.0, 1),
-                "win_rate": round((b["win"] / n) * 100.0, 1),
-            })
-        rows.sort(key=lambda x: (-x["pick_rate"], -x["picks"], x["avg_placement"]))
-        return rows[:limit]
-
-    guide: Dict[str, Any] = {}
-    tier_to_num = {"S": 1, "A": 2, "B": 3, "C": 4}
-
-    for c_key, ov in champ_overall.items():
-        total_picks = ov["picks"]
-        if total_picks <= 0:
+    records: List[Dict[str, Any]] = []
+    for p in participants:
+        subteam_id = int(p.get("playerSubteamId") or 0)
+        placement = int(p.get("subteamPlacement") or p.get("placement") or 0)
+        if placement <= 0 or placement > 6:
             continue
 
-        c_meta = meta.champions_by_key.get(c_key, {})
-        patch_stats_out: Dict[str, Dict[str, Any]] = {}
+        champ_key = meta.resolve_champion_key(p.get("championName", ""))
+        if not champ_key:
+            continue
+
+        combat_augments: List[str] = []
+        augment_ids: List[int] = []
+        for idx in range(1, 7):
+            aug_id = int(p.get(f"playerAugment{idx}") or 0)
+            if aug_id <= 0:
+                continue
+            augment_ids.append(aug_id)
+            aug_info = meta.resolve_augment(aug_id)
+            if aug_info:
+                combat_augments.append(aug_info["name"])
+
+        prismatic_items: List[str] = []
+        core_items: List[Dict[str, Any]] = []
+        seen_core_names: Set[str] = set()
+        for slot in range(0, 6):
+            iid = int(p.get(f"item{slot}") or 0)
+            if iid <= 0:
+                continue
+            kind, iname, canon_id = meta.classify_item_by_id(iid)
+            if not kind or not iname:
+                continue
+            if kind == "prismatic":
+                if iname not in prismatic_items:
+                    prismatic_items.append(iname)
+            elif kind == "legendary":
+                if iname not in seen_core_names:
+                    seen_core_names.add(iname)
+                    core_items.append({"name": iname, "id": canon_id})
+
+        partners = [
+            meta.resolve_champion_key(mate.get("championName", ""))
+            for mate in subteams.get(subteam_id, [])
+            if mate.get("puuid") != p.get("puuid") and mate.get("championName")
+        ]
+
+        records.append({
+            "match_id": match_id,
+            "patch": patch,
+            "queue_id": queue_id,
+            "team_size": 3,
+            "game_time": game_time,
+            "puuid": str(p.get("puuid") or ""),
+            "champion_name": champ_key,
+            "subteam_id": subteam_id,
+            "placement": placement,
+            "is_top_half": placement <= 3,
+            "is_win": placement == 1,
+            "damage_dealt": int(p.get("totalDamageDealtToChampions") or 0),
+            "gold_earned": int(p.get("goldEarned") or 0),
+            "augment_ids": augment_ids,
+            "combat_augments": combat_augments,
+            "prismatic_items": prismatic_items,
+            "core_items": core_items,
+            "partner_champions": partners,
+        })
+
+    return records
+
+
+def normalize_checkpoint_row(row: Dict[str, Any], meta: GameMetadata) -> Optional[Dict[str, Any]]:
+    """체크포인트 JSONL의 각 행을 최신 공식 증강명/챔피언 키 및 프리즘·전설급 분리 기준으로 정규화합니다."""
+    match_id = str(row.get("match_id") or "")
+    puuid = str(row.get("puuid") or "")
+    placement = int(row.get("placement") or 0)
+    if not match_id or placement <= 0 or placement > 6:
+        return None
+
+    patch = str(row.get("patch") or "unknown").strip()
+    champ_key = meta.resolve_champion_key(row.get("champion_name", ""))
+    if not champ_key:
+        return None
+
+    # augment_ids가 있으면 공식 cherry-augments.json 이름으로 100% 정확하게 재매핑
+    raw_aug_ids = [
+        int(aid) for aid in (row.get("augment_ids") or [])
+        if str(aid).isdigit() and int(aid) > 0
+    ]
+    if raw_aug_ids:
+        resolved_names: List[str] = []
+        for aid in raw_aug_ids:
+            info_a = meta.resolve_augment(aid)
+            if info_a:
+                resolved_names.append(info_a["name"])
+        combat_augments = resolved_names or [
+            normalize_augment_name(a) for a in (row.get("combat_augments") or []) if a
+        ]
+    else:
+        combat_augments = [
+            normalize_augment_name(a) for a in (row.get("combat_augments") or []) if a
+        ]
+
+    # 프리즘 / 일반 전설급 재검증 (기존 체크포인트에 잘못 들어간 지배자의 피갑옷·워모그·신발 등 자동 교정)
+    prismatics: List[str] = []
+    seen_prism: Set[str] = set()
+    core_items: List[Dict[str, Any]] = []
+    seen_core: Set[str] = set()
+
+    for p_entry in (row.get("prismatic_items") or []):
+        pname = str(p_entry.get("name") if isinstance(p_entry, dict) else p_entry).strip()
+        pid = p_entry.get("id") if isinstance(p_entry, dict) else None
+        kind, canon_id = meta.classify_item_by_name(pname, raw_id=pid)
+        if kind == "prismatic":
+            if pname not in seen_prism:
+                seen_prism.add(pname)
+                prismatics.append(pname)
+        elif kind == "legendary":
+            if pname not in seen_core:
+                seen_core.add(pname)
+                core_items.append({"name": pname, "id": canon_id})
+
+    for c_item in (row.get("core_items") or []):
+        iname = str(c_item.get("name") if isinstance(c_item, dict) else c_item).strip()
+        raw_id = c_item.get("id") if isinstance(c_item, dict) else None
+        kind, canon_id = meta.classify_item_by_name(iname, raw_id=raw_id)
+        if kind == "prismatic":
+            if iname not in seen_prism:
+                seen_prism.add(iname)
+                prismatics.append(iname)
+        elif kind == "legendary":
+            if iname not in seen_core:
+                seen_core.add(iname)
+                core_items.append({"name": iname, "id": canon_id})
+
+    return {
+        "match_id": match_id,
+        "patch": patch,
+        "queue_id": int(row.get("queue_id", 1750)),
+        "team_size": 3,
+        "game_time": row.get("game_time", ""),
+        "puuid": puuid,
+        "champion_name": champ_key,
+        "subteam_id": int(row.get("subteam_id", 0)),
+        "placement": placement,
+        "is_top_half": bool(row.get("is_top_half", placement <= 3)),
+        "is_win": bool(row.get("is_win", placement == 1)),
+        "damage_dealt": int(row.get("damage_dealt", 0)),
+        "gold_earned": int(row.get("gold_earned", 0)),
+        "augment_ids": raw_aug_ids,
+        "combat_augments": combat_augments,
+        "prismatic_items": prismatics,
+        "core_items": core_items,
+        "partner_champions": [
+            meta.resolve_champion_key(p_name)
+            for p_name in (row.get("partner_champions") or [])
+            if p_name
+        ],
+    }
+
+
+def _open_checkpoint_read(filepath: str):
+    if filepath.endswith(".gz"):
+        return gzip.open(filepath, "rt", encoding="utf-8")
+    return open(filepath, "r", encoding="utf-8")
+
+
+def save_checkpoint_compact(filepath: str, records: List[Dict[str, Any]]) -> None:
+    """전체 레코드를 단일 스트림으로 깔끔하게 저장(gzip 사용 시 최대 압축)합니다."""
+    if not records:
+        return
+    tmp_path = filepath + ".tmp"
+    opener = (
+        (lambda p: gzip.open(p, "wt", encoding="utf-8", compresslevel=6))
+        if filepath.endswith(".gz")
+        else (lambda p: open(p, "w", encoding="utf-8"))
+    )
+    with opener(tmp_path) as fp:
+        for r in records:
+            fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+    os.replace(tmp_path, filepath)
+    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    log_print(f"[체크포인트 압축 저장] '{filepath}' ({size_mb:.2f} MB, {len(records):,}건)")
+
+
+def load_checkpoint(filepath: str, meta: GameMetadata) -> Tuple[List[Dict[str, Any]], Set[str], Set[str]]:
+    """압축(.jsonl.gz) 및 기존 비압축(.jsonl) 체크포인트를 모두 읽어 중복 제거 후 자동 마이그레이션합니다."""
+    records: List[Dict[str, Any]] = []
+    seen_match_ids: Set[str] = set()
+    seen_puuids: Set[str] = set()
+    seen_row_keys: Set[Tuple[str, str, str]] = set()
+
+    candidate_files: List[str] = []
+    legacy_plain_path = filepath[:-3] if filepath.endswith(".gz") else ""
+    if legacy_plain_path and os.path.exists(legacy_plain_path):
+        candidate_files.append(legacy_plain_path)
+    if os.path.exists(filepath):
+        candidate_files.append(filepath)
+
+    if not candidate_files:
+        return records, seen_match_ids, seen_puuids
+
+    for path in candidate_files:
+        with _open_checkpoint_read(path) as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                norm = normalize_checkpoint_row(raw, meta)
+                if not norm:
+                    continue
+                row_key = (norm["match_id"], norm["puuid"], norm["champion_name"])
+                if row_key in seen_row_keys:
+                    continue
+                seen_row_keys.add(row_key)
+                records.append(norm)
+                seen_match_ids.add(norm["match_id"])
+                if norm["puuid"]:
+                    seen_puuids.add(norm["puuid"])
+
+    log_print(
+        f"[체크포인트] 로드 완료: {len(records):,}건 ({len(seen_match_ids):,}개 매치) <- {candidate_files}"
+    )
+
+    # 기존 비압축 .jsonl 파일이 있었다면 .jsonl.gz로 통합 압축 저장 후 비압축 원본 삭제
+    if legacy_plain_path and os.path.exists(legacy_plain_path) and filepath.endswith(".gz"):
+        log_print(f"[자동 마이그레이션] '{legacy_plain_path}' -> '{filepath}' 압축 변환 중...")
+        save_checkpoint_compact(filepath, records)
+        try:
+            os.remove(legacy_plain_path)
+            log_print(f"[자동 마이그레이션] 기존 비압축 파일 '{legacy_plain_path}' 정리 완료")
+        except OSError as exc:
+            log_print(f"[경고] 비압축 원본 삭제 실패: {exc}")
+
+    return records, seen_match_ids, seen_puuids
+
+
+def append_checkpoint(filepath: str, new_records: List[Dict[str, Any]]) -> None:
+    """신규 매치 레코드를 체크포인트 파일에 추가 기록합니다 (.gz 지원)."""
+    if not new_records:
+        return
+    if filepath.endswith(".gz"):
+        with gzip.open(filepath, "at", encoding="utf-8", compresslevel=6) as fp:
+            for r in new_records:
+                fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+    else:
+        with open(filepath, "a", encoding="utf-8") as fp:
+            for r in new_records:
+                fp.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+# =============================================================================
+# 7. Riot API 크롤러 (aggregate_only=False일 때만 실행)
+# =============================================================================
+
+
+def crawl_new_matches(
+    config: Dict[str, Any],
+    meta: GameMetadata,
+    existing_records: List[Dict[str, Any]],
+    seen_match_ids: Set[str],
+    seen_puuids: Set[str],
+) -> Tuple[List[Dict[str, Any]], int]:
+    api_key = str(config.get("api_key") or "").strip()
+    if not api_key or api_key == "RGAPI-YOUR-KEY-HERE":
+        log_print("[오류] 유효한 Riot API 키가 설정되지 않았습니다.")
+        return existing_records, 0
+
+    client = RiotApiClient(api_key=api_key, routing_region=config.get("routing_region", "asia"))
+    queue_puuids: deque = deque(list(seen_puuids)[:200])
+    visited_puuids: Set[str] = set()
+
+    if not queue_puuids:
+        for riot_id in config.get("seed_riot_ids") or []:
+            if "#" not in riot_id:
+                continue
+            gname, tag = riot_id.split("#", 1)
+            puuid = client.get_puuid_by_riot_id(gname.strip(), tag.strip())
+            if puuid:
+                queue_puuids.append(puuid)
+                log_print(f"  -> 시드 소환사 '{riot_id}' PUUID 확보 완료")
+
+    max_new = int(config.get("max_new_matches", 300))
+    target_queues = set(config.get("target_queue_ids") or [])
+    target_patches = set(config.get("target_patches") or [])
+    checkpoint_path = config["checkpoint_path"]
+
+    collected_matches = 0
+    log_print(f"[수집 시작] 목표 신규 3v3 매치: {max_new}개 | 대상 패치: {sorted(target_patches) or '전체'}")
+
+    while queue_puuids and collected_matches < max_new:
+        puuid = queue_puuids.popleft()
+        if puuid in visited_puuids:
+            continue
+        visited_puuids.add(puuid)
+
+        match_ids = client.get_match_ids_by_puuid(puuid, count=30)
+        for mid in match_ids:
+            if collected_matches >= max_new:
+                break
+            if mid in seen_match_ids:
+                continue
+            seen_match_ids.add(mid)
+
+            match_json = client.get_match(mid)
+            if not match_json:
+                continue
+            parsed = parse_arena_3v3_match(match_json, meta, target_queues, target_patches)
+            if not parsed:
+                continue
+
+            append_checkpoint(checkpoint_path, parsed)
+            existing_records.extend(parsed)
+            collected_matches += 1
+
+            for rec in parsed:
+                p_id = rec.get("puuid")
+                if p_id and p_id not in visited_puuids and len(queue_puuids) < 2000:
+                    queue_puuids.append(p_id)
+
+            if collected_matches % 15 == 0:
+                log_print(f"  -> 진행: 신규 {collected_matches}/{max_new} 매치 (누적 {len(existing_records):,}건)")
+
+    log_print(f"[수집 완료] 신규 3v3 매치 {collected_matches}개 추가 (총 {len(existing_records):,}건)")
+    return existing_records, collected_matches
+
+
+# =============================================================================
+# 8. 순수 실측 데이터 기반 다중 패치 통합 집계 (픽률순 정렬 + 평균 등수 함께 저장)
+# =============================================================================
+
+
+def aggregate_all_champions(
+    records: List[Dict[str, Any]],
+    meta: GameMetadata,
+    min_aug_picks: int = 3,
+    max_augs_per_rarity: int = 12,
+) -> Dict[str, Any]:
+    """수집된 3v3 아레나 실측 레코드만을 사용해 챔피언별 통계를 집계합니다."""
+    if not records:
+        return {}
+
+    all_patches_desc = sorted({r["patch"] for r in records}, key=patch_sort_key, reverse=True)
+    weight_curve = [1.0, 0.75, 0.5, 0.35, 0.25]
+    patch_weights = {
+        p: weight_curve[min(idx, len(weight_curve) - 1)]
+        for idx, p in enumerate(all_patches_desc)
+    }
+    patch_scope_str = " · ".join(all_patches_desc[:4])
+
+    by_champ: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        by_champ[r["champion_name"]].append(r)
+
+    total_matches_est = max(len(records) / 18.0, 1.0)
+    guide_output: Dict[str, Any] = {}
+
+    for champ_key, rows in by_champ.items():
+        raw_total_picks = len(rows)
+        if raw_total_picks < 3:
+            continue
+
+        # 1) 패치별 통계 & 최신 가중 통합 요약
+        by_patch: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for r in rows:
+            by_patch[r["patch"]].append(r)
+
+        patch_stats: Dict[str, Dict[str, Any]] = {}
         w_picks_sum = 0.0
         w_place_sum = 0.0
         w_top3_sum = 0.0
         w_win_sum = 0.0
         w_dmg_sum = 0.0
 
-        for p_ver in patches_desc:
-            ps = champ_patch[c_key].get(p_ver)
-            if not ps or ps["picks"] <= 0:
-                continue
-            n = ps["picks"]
-            p_avg = round(ps["place_sum"] / n, 2)
-            p_top3 = round((ps["top3"] / n) * 100.0, 1)
-            p_win = round((ps["win"] / n) * 100.0, 1)
-            p_dmg = round(ps["dmg_sum"] / n)
-            patch_stats_out[p_ver] = {
-                "picks": n,
+        for p_ver in sorted(by_patch.keys(), key=patch_sort_key, reverse=True):
+            p_rows = by_patch[p_ver]
+            pn = len(p_rows)
+            p_avg = round(sum(x["placement"] for x in p_rows) / pn, 2)
+            p_top3 = round(sum(100.0 for x in p_rows if x["is_top_half"]) / pn, 1)
+            p_win = round(sum(100.0 for x in p_rows if x["is_win"]) / pn, 1)
+            p_dmg = int(round(sum(x["damage_dealt"] for x in p_rows) / pn))
+
+            patch_stats[p_ver] = {
+                "picks": pn,
                 "avg_placement": p_avg,
                 "top3_rate": p_top3,
                 "win_rate": p_win,
                 "avg_damage": p_dmg,
             }
+
             w = patch_weights.get(p_ver, 0.5)
-            eff_n = n * w
+            eff_n = pn * w
             w_picks_sum += eff_n
             w_place_sum += p_avg * eff_n
             w_top3_sum += p_top3 * eff_n
             w_win_sum += p_win * eff_n
             w_dmg_sum += p_dmg * eff_n
 
-        if w_picks_sum > 0:
-            avg_placement = round(w_place_sum / w_picks_sum, 2)
-            bayes_placement = round((w_picks_sum * avg_placement + 25 * 3.5) / (w_picks_sum + 25), 2)
-            top3_rate = round(w_top3_sum / w_picks_sum, 1)
-            win_rate = round(w_win_sum / w_picks_sum, 1)
-            avg_damage = round(w_dmg_sum / w_picks_sum)
-        else:
-            avg_placement = round(ov["place_sum"] / total_picks, 2)
-            bayes_placement = round((total_picks * avg_placement + 25 * 3.5) / (total_picks + 25), 2)
-            top3_rate = round((ov["top3"] / total_picks) * 100.0, 1)
-            win_rate = round((ov["win"] / total_picks) * 100.0, 1)
-            avg_damage = round(ov["dmg_sum"] / total_picks)
+        overall_avg = round(w_place_sum / w_picks_sum, 2)
+        overall_bayes = round(bayes_smooth(w_picks_sum, overall_avg, m=25.0, prior=3.5), 2)
+        overall_top3 = round(w_top3_sum / w_picks_sum, 1)
+        overall_win = round(w_win_sum / w_picks_sum, 1)
+        overall_dmg = int(round(w_dmg_sum / w_picks_sum))
+        pick_rate_pct = round((raw_total_picks / total_matches_est) * 100.0, 2)
 
-        if total_picks < 20:
-            tier = "B"
-        elif bayes_placement <= 3.32:
-            tier = "S"
-        elif bayes_placement <= 3.46:
-            tier = "A"
-        elif bayes_placement <= 3.60:
-            tier = "B"
+        # 6팀 아레나 실측 분포 기준 티어 산정
+        if raw_total_picks < 20:
+            tier, tier_num = "B", 3
+        elif overall_bayes <= 3.32:
+            tier, tier_num = "S", 1
+        elif overall_bayes <= 3.46:
+            tier, tier_num = "A", 2
+        elif overall_bayes <= 3.60:
+            tier, tier_num = "B", 3
         else:
-            tier = "C"
+            tier, tier_num = "C", 4
 
-        guide[c_key] = {
-            "champion_name": c_key,
-            "kr_name": c_meta.get("kr_name", c_key),
-            "roles": c_meta.get("roles", ["Fighter"]),
+        # 2) 증강 집계 (프리즘 / 골드 / 실버 등급별 픽률순 정렬 + 평균 등수 포함)
+        aug_bucket: Dict[str, Dict[str, float]] = defaultdict(
+            lambda: {"picks": 0, "w_picks": 0.0, "w_place": 0.0, "w_win": 0.0, "w_top3": 0.0}
+        )
+        for r in rows:
+            w = patch_weights.get(r["patch"], 0.5)
+            for aug_name in set(r.get("combat_augments") or []):
+                aug_clean = normalize_augment_name(aug_name)
+                if not aug_clean or aug_clean == "???":
+                    continue
+                b = aug_bucket[aug_clean]
+                b["picks"] += 1
+                b["w_picks"] += w
+                b["w_place"] += r["placement"] * w
+                b["w_win"] += (100.0 if r["is_win"] else 0.0) * w
+                b["w_top3"] += (100.0 if r["is_top_half"] else 0.0) * w
+
+        eff_min_aug = max(min_aug_picks, int(raw_total_picks * 0.01))
+        aug_by_rarity: Dict[str, List[Dict[str, Any]]] = {"프리즘": [], "골드": [], "실버": []}
+
+        for aug_name, stats in aug_bucket.items():
+            n = int(stats["picks"])
+            if n < eff_min_aug and raw_total_picks >= 40:
+                continue
+            if n < 2:
+                continue
+            wp = stats["w_picks"]
+            avg_p = round(stats["w_place"] / wp, 2)
+            win_r = round(stats["w_win"] / wp, 1)
+            top3_r = round(stats["w_top3"] / wp, 1)
+
+            scored = compute_composite_augment_score(
+                aug_picks=n,
+                champ_picks=raw_total_picks,
+                raw_avg_place=avg_p,
+                raw_win_rate=win_r,
+                champ_avg_place=overall_avg,
+                champ_win_rate=overall_win,
+            )
+
+            aug_info = meta.augments_by_name.get(aug_name, {})
+            rarity_ko = normalize_rarity_ko(aug_info.get("rarity", "실버"), aug_name=aug_name)
+
+            aug_by_rarity[rarity_ko].append({
+                "name": aug_name,
+                "rarity": rarity_ko,
+                "picks": n,
+                "pick_rate": scored["pick_rate"],
+                "avg": avg_p,
+                "avg_placement": avg_p,
+                "bayes": scored["bayes_placement"],
+                "win": win_r,
+                "win_rate": win_r,
+                "top3_rate": top3_r,
+                "composite_score": scored["composite_score"],
+                "icon": aug_info.get("icon_url", ""),
+                "icon_url": aug_info.get("icon_url", ""),
+            })
+
+        best_augments: List[Dict[str, Any]] = []
+        per_tier_limit = max(max_augs_per_rarity, 12)
+        for rarity_key in ("프리즘", "골드", "실버"):
+            candidates = sorted(
+                aug_by_rarity[rarity_key],
+                key=lambda x: (-x["pick_rate"], -x["picks"], x["avg"]),
+            )
+            best_augments.extend(candidates[:per_tier_limit])
+
+        # 3) 프리즘 아이템 전용 집계 (픽률 내림차순 → 표본순 → 평균 등수순)
+        prism_bucket: Dict[str, Dict[str, float]] = defaultdict(
+            lambda: {"picks": 0, "w_picks": 0.0, "w_place": 0.0, "w_win": 0.0, "w_top3": 0.0}
+        )
+        for r in rows:
+            w = patch_weights.get(r["patch"], 0.5)
+            for pname in set(r.get("prismatic_items") or []):
+                kind, _ = meta.classify_item_by_name(pname)
+                if kind != "prismatic":
+                    continue
+                b = prism_bucket[pname]
+                b["picks"] += 1
+                b["w_picks"] += w
+                b["w_place"] += r["placement"] * w
+                b["w_win"] += (100.0 if r["is_win"] else 0.0) * w
+                b["w_top3"] += (100.0 if r["is_top_half"] else 0.0) * w
+
+        prism_list: List[Dict[str, Any]] = []
+        for pname, stats in prism_bucket.items():
+            n = int(stats["picks"])
+            if n < 2:
+                continue
+            wp = stats["w_picks"]
+            avg_p = round(stats["w_place"] / wp, 2)
+            win_r = round(stats["w_win"] / wp, 1)
+            top3_r = round(stats["w_top3"] / wp, 1)
+            pr = round(min(100.0, (n / raw_total_picks) * 100.0), 1)
+            bp = round(bayes_smooth(n, avg_p, m=10.0, prior=overall_avg), 2)
+
+            prism_id = meta.prismatic_name_to_id.get(pname)
+            dd_icon = meta._dd_item_icon(prism_id) if prism_id else ""
+            cd_icon = meta.cdragon_prismatic_icon_by_name.get(pname) or meta.cdragon_item_icon_by_name.get(pname, "")
+            item_icon = dd_icon or cd_icon
+
+            prism_list.append({
+                "name": pname,
+                "id": prism_id,
+                "picks": n,
+                "pick_rate": pr,
+                "avg": avg_p,
+                "avg_placement": avg_p,
+                "bayes": bp,
+                "win": win_r,
+                "win_rate": win_r,
+                "top3_rate": top3_r,
+                "icon": item_icon,
+                "icon_url": item_icon,
+            })
+        prism_list.sort(key=lambda x: (-x["pick_rate"], -x["picks"], x["avg"]))
+        best_prismatics = prism_list[:15]
+
+        # 4) 일반 전설급 아이템 전용 집계 (픽률 내림차순 → 표본순 → 평균 등수순)
+        core_bucket: Dict[str, Dict[str, Any]] = defaultdict(
+            lambda: {"id": None, "picks": 0, "w_picks": 0.0, "w_place": 0.0, "w_win": 0.0, "w_top3": 0.0}
+        )
+        for r in rows:
+            w = patch_weights.get(r["patch"], 0.5)
+            seen_items_in_game: Set[str] = set()
+            for c_item in r.get("core_items") or []:
+                iname = c_item.get("name") if isinstance(c_item, dict) else str(c_item)
+                raw_id = c_item.get("id") if isinstance(c_item, dict) else None
+                kind, canon_id = meta.classify_item_by_name(iname, raw_id=raw_id)
+                if kind != "legendary" or iname in seen_items_in_game:
+                    continue
+                seen_items_in_game.add(iname)
+                b = core_bucket[iname]
+                b["picks"] += 1
+                b["w_picks"] += w
+                b["w_place"] += r["placement"] * w
+                b["w_win"] += (100.0 if r["is_win"] else 0.0) * w
+                b["w_top3"] += (100.0 if r["is_top_half"] else 0.0) * w
+                if not b["id"]:
+                    b["id"] = canon_id or meta.item_name_to_latest_id.get(iname)
+
+        core_list: List[Dict[str, Any]] = []
+        for iname, stats in core_bucket.items():
+            n = int(stats["picks"])
+            if n < 2:
+                continue
+            wp = stats["w_picks"]
+            avg_p = round(stats["w_place"] / wp, 2)
+            win_r = round(stats["w_win"] / wp, 1)
+            top3_r = round(stats["w_top3"] / wp, 1)
+            pr = round(min(100.0, (n / raw_total_picks) * 100.0), 1)
+            iid = stats["id"] or meta.item_name_to_latest_id.get(iname)
+            dd_icon = (
+                meta._dd_item_icon(iid)
+                if iid
+                else meta.cdragon_item_icon_by_name.get(iname, "")
+            )
+            core_list.append({
+                "name": iname,
+                "id": iid,
+                "picks": n,
+                "pick_rate": pr,
+                "avg": avg_p,
+                "avg_placement": avg_p,
+                "win": win_r,
+                "win_rate": win_r,
+                "top3_rate": top3_r,
+                "icon": dd_icon,
+                "icon_url": dd_icon,
+            })
+        core_list.sort(key=lambda x: (-x["pick_rate"], -x["picks"], x["avg"]))
+        core_items = core_list[:15]
+
+        # 5) 3인 팀 파트너 시너지 집계 (픽률순 + 평균 등수 포함)
+        partner_bucket: Dict[str, Dict[str, float]] = defaultdict(
+            lambda: {"games": 0, "w_games": 0.0, "w_place": 0.0, "w_top3": 0.0, "w_win": 0.0}
+        )
+        for r in rows:
+            w = patch_weights.get(r["patch"], 0.5)
+            for partner_raw in r.get("partner_champions") or []:
+                partner_key = meta.resolve_champion_key(partner_raw)
+                if not partner_key or partner_key == champ_key:
+                    continue
+                b = partner_bucket[partner_key]
+                b["games"] += 1
+                b["w_games"] += w
+                b["w_place"] += r["placement"] * w
+                b["w_top3"] += (100.0 if r["is_top_half"] else 0.0) * w
+                b["w_win"] += (100.0 if r["is_win"] else 0.0) * w
+
+        partner_list: List[Dict[str, Any]] = []
+        for pkey, stats in partner_bucket.items():
+            g = int(stats["games"])
+            if g < 2:
+                continue
+            wg = stats["w_games"]
+            avg_p = round(stats["w_place"] / wg, 2)
+            top3_r = round(stats["w_top3"] / wg, 1)
+            win_r = round(stats["w_win"] / wg, 1)
+            pr = round(min(100.0, (g / raw_total_picks) * 100.0), 1)
+            bp = round(bayes_smooth(g, avg_p, m=8.0, prior=overall_avg), 2)
+            p_kr = (meta.champions_by_id.get(pkey) or {}).get("kr_name", pkey)
+            partner_list.append({
+                "partner": pkey,
+                "champion": pkey,
+                "champion_name": pkey,
+                "name": p_kr,
+                "kr_name": p_kr,
+                "games": g,
+                "picks": g,
+                "pick_rate": pr,
+                "avg": avg_p,
+                "avg_placement": avg_p,
+                "bayes_placement": bp,
+                "win_rate": win_r,
+                "top3_rate": top3_r,
+            })
+        partner_list.sort(key=lambda x: (-x["pick_rate"], -x["games"], x["avg"]))
+        best_partners = partner_list[:10]
+
+        champ_meta = meta.champions_by_id.get(champ_key) or {}
+        kr_name = champ_meta.get("kr_name", champ_key)
+        roles = champ_meta.get("roles") or ["Fighter"]
+
+        guide_output[champ_key] = {
+            "champion_name": champ_key,
+            "kr_name": kr_name,
+            "roles": roles,
+            "patch_scope": patch_scope_str,
+            "patch_stats": patch_stats,
             "summary": {
                 "tier": tier,
-                "tier_num": tier_to_num[tier],
-                "picks": total_picks,
-                "avg_placement": avg_placement,
-                "bayes_placement": bayes_placement,
-                "top3_rate": top3_rate,
-                "win_rate": win_rate,
-                "avg_damage": avg_damage,
+                "tier_num": tier_num,
+                "picks": raw_total_picks,
+                "pick_rate": pick_rate_pct,
+                "avg_placement": overall_avg,
+                "bayes_placement": overall_bayes,
+                "top3_rate": overall_top3,
+                "win_rate": overall_win,
+                "avg_damage": overall_dmg,
             },
-            "patch_stats": patch_stats_out,
-            "best_prismatics": _finalize_item_list(champ_prismatics[c_key], total_picks, limit=20),
-            "core_items": _finalize_item_list(champ_legendaries[c_key], total_picks, limit=20),
-            "best_augments": _finalize_aug_list(champ_augments[c_key], total_picks, limit=45),
-            "best_partners": _finalize_partner_list(champ_partners[c_key], total_picks, limit=12),
+            "best_augments": best_augments,
+            "best_prismatics": best_prismatics,
+            "core_items": core_items,
+            "best_partners": best_partners,
         }
 
-    # 베이지안 평균 등수 순 정렬
-    sorted_guide = dict(
-        sorted(
-            guide.items(),
-            key=lambda kv: (kv[1]["summary"]["bayes_placement"], -kv[1]["summary"]["picks"]),
-        )
-    )
-    return sorted_guide
+    return guide_output
 
 
 # =============================================================================
-# 6. 신규 매치 수집 루프 (BFS 탐색)
+# 9. 메인 엔트리포인트
 # =============================================================================
-def collect_new_matches(
-    client: RiotApiClient,
-    existing_matches: Dict[str, Dict[str, Any]],
-    target_new: int,
-    max_runtime_minutes: int,
-) -> int:
-    start_ts = time.time()
-    deadline_ts = start_ts + max_runtime_minutes * 60
-
-    puuid_queue: deque = deque()
-    visited_puuids: Set[str] = set()
-    seen_match_ids: Set[str] = set(existing_matches.keys())
-
-    # 기존 체크포인트에 있는 최근 유저를 시드로 우선 활용
-    recent_matches = sorted(
-        existing_matches.values(),
-        key=lambda m: int(m.get("ts", 0) or 0),
-        reverse=True,
-    )[:40]
-    for m in recent_matches:
-        for p in m.get("participants", []):
-            puuid = p.get("puuid", "")
-            if puuid and puuid not in visited_puuids:
-                visited_puuids.add(puuid)
-                puuid_queue.append(puuid)
-
-    # 시드가 부족하면 KR 상위 랭커 시드 보충
-    if len(puuid_queue) < 40:
-        log_print("KR 리그 시드 유저 조회 중...")
-        for puuid in client.fetch_seed_puuids(max_seeds=100):
-            if puuid not in visited_puuids:
-                visited_puuids.add(puuid)
-                puuid_queue.append(puuid)
-
-    log_print(f"수집 시작 (시드 {len(puuid_queue)}명, 목표 신규 매치 {target_new:,}건)")
-
-    new_count = 0
-    while puuid_queue and new_count < target_new and not client.auth_failed:
-        if time.time() >= deadline_ts:
-            log_print(f"최대 실행 시간({max_runtime_minutes}분) 도달로 수집을 안전하게 종료합니다.")
-            break
-
-        puuid = puuid_queue.popleft()
-        match_ids = client.fetch_arena_match_ids(puuid, count=30)
-        if client.auth_failed:
-            break
-
-        for mid in match_ids:
-            if mid in seen_match_ids:
-                continue
-            seen_match_ids.add(mid)
-
-            if time.time() >= deadline_ts or new_count >= target_new or client.auth_failed:
-                break
-
-            detail = client.fetch_match_detail(mid)
-            if not detail:
-                continue
-
-            compact = extract_compact_match(detail)
-            if not compact:
-                continue
-
-            existing_matches[mid] = compact
-            new_count += 1
-
-            # BFS 확장: 해당 매치 참가자를 탐색 큐에 추가
-            if len(puuid_queue) < 5000:
-                for p in compact.get("participants", []):
-                    npuu = p.get("puuid", "")
-                    if npuu and npuu not in visited_puuids:
-                        visited_puuids.add(npuu)
-                        puuid_queue.append(npuu)
-
-            if new_count % 100 == 0:
-                elapsed_m = (time.time() - start_ts) / 60.0
-                log_print(
-                    f"진행 상황: 신규 {new_count:,}/{target_new:,}건 "
-                    f"(누적 {len(existing_matches):,}건, 경과 {elapsed_m:.1f}분)"
-                )
-            if new_count % 300 == 0:
-                save_compressed_checkpoint(existing_matches)
-
-    log_print(f"신규 매치 수집 완료: +{new_count:,}건 (총 누적 {len(existing_matches):,}건)")
-    return new_count
 
 
-# =============================================================================
-# 7. 메인 진입점
-# =============================================================================
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LoL 아레나 3v3 실측 데이터 수집 및 집계기")
-    parser.add_argument("--api-key", default=os.getenv("RIOT_API_KEY", ""), help="Riot API Key")
-    parser.add_argument(
-        "--target-matches",
-        type=int,
-        default=int(os.getenv("TARGET_NEW_MATCHES", "3000")),
-        help="회당 목표 신규 매치 수",
-    )
-    parser.add_argument(
-        "--max-runtime-minutes",
-        type=int,
-        default=int(os.getenv("MAX_RUNTIME_MINUTES", "110")),
-        help="최대 수집 실행 시간(분)",
-    )
-    parser.add_argument(
-        "--request-delay",
-        type=float,
-        default=float(os.getenv("REQUEST_DELAY", "1.25")),
-        help="API 요청 간 최소 대기 시간(초)",
-    )
-    parser.add_argument(
-        "--rebuild-only",
-        action="store_true",
-        help="API 수집 없이 기존 체크포인트로 JSON만 즉시 재집계",
-    )
-    args = parser.parse_args()
+    log_print("=" * 64)
+    log_print("LoL 아레나 3v3 실측 데이터 수집 및 통합 집계기 시작")
+    log_print("=" * 64)
 
-    meta = OfficialMetadata()
-    meta.load_all()
+    meta = GameMetadata()
+    checkpoint_path = COLAB_CONFIG["checkpoint_path"]
+    output_path = COLAB_CONFIG["output_json_path"]
 
-    matches = load_existing_checkpoint()
+    records, seen_match_ids, seen_puuids = load_checkpoint(checkpoint_path, meta)
 
-    if not args.rebuild_only:
-        if args.api_key:
-            client = RiotApiClient(api_key=args.api_key, request_delay=args.request_delay)
-            collect_new_matches(
-                client=client,
-                existing_matches=matches,
-                target_new=args.target_matches,
-                max_runtime_minutes=args.max_runtime_minutes,
+    new_collected = 0
+    if not COLAB_CONFIG.get("aggregate_only", True):
+        try:
+            records, new_collected = crawl_new_matches(COLAB_CONFIG, meta, records, seen_match_ids, seen_puuids)
+        except PermissionError as exc:
+            log_print(
+                f"[인증 오류] {exc}\n"
+                "  -> Development Key는 24시간마다 만료됩니다. GitHub Secrets의 RIOT_API_KEY를 갱신하거나\n"
+                "     Riot Developer Portal에서 만료 없는 Personal API Key를 발급받아 등록해 주세요."
             )
-        else:
-            log_print("[안내] RIOT_API_KEY가 없어 기존 체크포인트 재집계만 수행합니다.")
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                raise SystemExit(1)
+    else:
+        log_print("[재집계 모드] aggregate_only=True -> 체크포인트 즉시 재집계 진행")
 
-    if not matches:
-        log_print("[오류] 집계할 매치 데이터가 없습니다.")
-        sys.exit(1)
+    # 신규 매치가 추가되었거나 기존 체크포인트 재정규화 후 단일 gzip 스트림으로 재압축
+    if records and checkpoint_path.endswith(".gz"):
+        save_checkpoint_compact(checkpoint_path, records)
 
-    save_compressed_checkpoint(matches)
+    if not records:
+        log_print(
+            f"[안내] '{checkpoint_path}' 파일이 없거나 비어 있습니다.\n"
+            "  1) 기존 arena_3v3_checkpoint.jsonl(.gz)을 업로드 후 실행하거나,\n"
+            "  2) aggregate_only=False 및 Riot API 키 설정 후 신규 수집을 실행하세요."
+        )
+        return
 
-    guide = build_guide_json(matches, meta)
-    with open(OUTPUT_JSON_PATH, "wt", encoding="utf-8") as f:
-        json.dump(guide, f, ensure_ascii=False, indent=2)
-
-    log_print(
-        f"최종 가이드 JSON 저장 완료: {OUTPUT_JSON_PATH.name} "
-        f"(챔피언 {len(guide)}명, 누적 매치 {len(matches):,}건)"
+    guide_data = aggregate_all_champions(
+        records=records,
+        meta=meta,
+        min_aug_picks=int(COLAB_CONFIG.get("min_aug_picks", 3)),
+        max_augs_per_rarity=int(COLAB_CONFIG.get("max_augs_per_rarity", 12)),
     )
+
+    with open(output_path, "w", encoding="utf-8") as fp:
+        json.dump(guide_data, fp, ensure_ascii=False, indent=2)
+
+    rarity_summary = Counter(
+        aug["rarity"]
+        for c in guide_data.values()
+        for aug in c.get("best_augments", [])
+    )
+    log_print(
+        f"[완료] '{output_path}' 저장 성공! "
+        f"총 {len(guide_data)}명 챔피언 집계 (증강 등급 분포: {dict(rarity_summary)})"
+    )
+
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        try:
+            from google.colab import files  # type: ignore
+            log_print(f"[Colab] '{output_path}' 자동 다운로드 시작...")
+            files.download(output_path)
+        except ImportError:
+            pass
+        except Exception as exc:
+            log_print(f"[안내] 자동 다운로드 건너뜀(좌측 파일 탭에서 수동 다운로드 가능): {exc}")
 
 
 if __name__ == "__main__":
